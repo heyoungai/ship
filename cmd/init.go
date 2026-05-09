@@ -1,0 +1,207 @@
+package cmd
+
+import (
+	"ship/internal"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"github.com/spf13/cobra"
+)
+
+var initForce bool
+
+var initCmd = &cobra.Command{
+	Use:   "init",
+	Short: "在当前目录初始化 ship.toml 配置文件",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return doInit()
+	},
+}
+
+func init() {
+	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "强制覆盖已存在的 ship.toml")
+}
+
+// doInit 在当前目录生成 ship.toml 配置文件
+func doInit() error {
+	const configFile = "ship.toml"
+
+	// 检查是否已存在
+	if _, err := os.Stat(configFile); err == nil && !initForce {
+		fmt.Printf("%s ship.toml 已存在，使用 --force 覆盖\n", internal.WarnStyle.Render("⚠️"))
+		return nil
+	}
+
+	// 自动探测项目信息
+	info := detectProject()
+
+	// 生成配置内容
+	content := generateConfig(info)
+
+	// 写入文件
+	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
+		return fmt.Errorf("写入 ship.toml 失败: %w", err)
+	}
+
+	fmt.Printf("%s 已生成 ship.toml\n", internal.SuccessStyle.Render("✅"))
+	fmt.Printf("\n%s\n", internal.DimStyle.Render("请检查并修改以下探测结果："))
+	for k, v := range info {
+		if v != "" {
+			fmt.Printf("  %-15s %s\n", k+":", v)
+		}
+	}
+	fmt.Printf("\n%s\n", internal.DimStyle.Render("ship.toml 可继续手动编辑，参考 config.example.toml"))
+	return nil
+}
+
+// projectInfo 存储自动探测到的项目信息
+type projectInfo struct {
+	ImageName string
+	LocalBuild string
+	HasDockerfile bool
+	HasEnvFile    bool
+	EnvFile       string
+}
+
+// detectProject 自动探测当前项目的信息
+func detectProject() map[string]string {
+	info := make(map[string]string)
+
+	// 1. 推断 image name：优先 git remote，其次目录名
+	if name := detectImageFromGitRemote(); name != "" {
+		info["镜像名称"] = name + " (从 git remote 推断)"
+	} else {
+		dir := filepath.Base(mustGetwd())
+		info["镜像名称"] = dir + " (从目录名推断)"
+	}
+
+	// 2. 检测 Dockerfile
+	if _, err := os.Stat("Dockerfile"); err == nil {
+		info["Dockerfile"] = "已检测到"
+	}
+
+	// 3. 检测本地构建命令
+	if cmd := detectLocalBuildCmd(); cmd != "" {
+		info["本地构建"] = cmd
+	}
+
+	// 4. 检测 .env 文件
+	for _, f := range []string{".env.local", ".env"} {
+		if _, err := os.Stat(f); err == nil {
+			info["环境文件"] = f
+			break
+		}
+	}
+
+	return info
+}
+
+// detectImageFromGitRemote 从 git remote URL 推断镜像名
+func detectImageFromGitRemote() string {
+	out, err := exec.Command("git", "remote", "get-url", "origin").Output()
+	if err != nil {
+		return ""
+	}
+	url := strings.TrimSpace(string(out))
+
+	// SSH: git@github.com:user/repo.git → repo
+	// HTTPS: https://github.com/user/repo.git → repo
+	url = strings.TrimSuffix(url, ".git")
+	parts := strings.FieldsFunc(url, func(r rune) bool {
+		return r == '/' || r == ':'
+	})
+	if len(parts) > 0 {
+		return parts[len(parts)-1]
+	}
+	return ""
+}
+
+// detectLocalBuildCmd 根据锁文件推断构建命令
+func detectLocalBuildCmd() string {
+	for _, pair := range [][2]string{
+		{"bun.lock", "bun run build"},
+		{"yarn.lock", "yarn build"},
+		{"pnpm-lock.yaml", "pnpm run build"},
+		{"package-lock.json", "npm run build"},
+	} {
+		if _, err := os.Stat(pair[0]); err == nil {
+			return pair[1]
+		}
+	}
+	return ""
+}
+
+// mustGetwd 获取当前工作目录，失败时返回 "."
+func mustGetwd() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	return wd
+}
+
+// generateConfig 根据探测信息生成 ship.toml 内容
+func generateConfig(info map[string]string) string {
+	imageName := "myapp"
+	if v, ok := info["镜像名称"]; ok {
+		// 去掉括号里的推断说明
+		if idx := strings.Index(v, " ("); idx > 0 {
+			imageName = v[:idx]
+		}
+	}
+
+	envFile := "./.env.local"
+	if v, ok := info["环境文件"]; ok {
+		envFile = "./" + v
+	}
+
+	var b strings.Builder
+
+	b.WriteString("# ship 配置文件\n")
+	b.WriteString("# 由 ship init 自动生成，请根据项目实际情况修改\n\n")
+
+	// [build]
+	b.WriteString("# ── 构建设置 ────────────────────────────────────────────────\n")
+	b.WriteString("[build]\n")
+	b.WriteString("platforms = \"linux/amd64\"\n")
+	b.WriteString("dockerfile = \"./Dockerfile\"\n")
+	b.WriteString(fmt.Sprintf("env_file = \"%s\"\n", envFile))
+
+	if v, ok := info["本地构建"]; ok {
+		b.WriteString(fmt.Sprintf("local_build = \"%s\"\n", v))
+	}
+	b.WriteString("\n")
+
+	// [[registries]]
+	b.WriteString("# ── 镜像仓库 ────────────────────────────────────────────────\n")
+	b.WriteString("[[registries]]\n")
+	b.WriteString("type = \"private\"\n")
+	b.WriteString("url = \"registry.cn-hangzhou.aliyuncs.com\"  # 改为你的仓库地址\n")
+	b.WriteString("namespace = \"deali\"                        # 改为你的命名空间\n")
+	b.WriteString(fmt.Sprintf("image = \"%s\"\n", imageName))
+	b.WriteString("\n")
+
+	// [deploy]
+	b.WriteString("# ── 远程部署 ────────────────────────────────────────────────\n")
+	b.WriteString("[deploy]\n")
+	b.WriteString("enabled = false\n")
+	b.WriteString("host = \"your-server\"                       # SSH Host\n")
+	b.WriteString(fmt.Sprintf("path = \"/home/user/projects/%s\"  # 远程项目路径\n", imageName))
+	b.WriteString("\n")
+
+	// [matrix] 注释示例
+	b.WriteString("# ── 矩阵构建（可选）────────────────────────────────────────\n")
+	b.WriteString("# [[matrix]]\n")
+	b.WriteString("# name = \"brand-a\"\n")
+	b.WriteString("# default = true\n")
+	b.WriteString("# env = { NEXT_PUBLIC_APP_BRAND = \"brand-a\" }\n")
+	b.WriteString("#\n")
+	b.WriteString("# [[matrix]]\n")
+	b.WriteString("# name = \"brand-b\"\n")
+	b.WriteString("# env = { NEXT_PUBLIC_APP_BRAND = \"brand-b\" }\n")
+
+	return b.String()
+}

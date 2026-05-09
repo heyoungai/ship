@@ -15,6 +15,10 @@ var rootCmd = &cobra.Command{
 	Short: "Docker 镜像构建、推送和远程部署 CLI 工具",
 	Long:  "支持独立执行 build / tag / push / deploy 各阶段，也可 run 一键全流程。\n支持 ship.toml 配置文件和矩阵构建（多品牌/多变体）。",
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// init 命令不需要已有配置
+		if cmd.Name() == "init" {
+			return
+		}
 		cfg = internal.LoadConfig(os.Getenv("IMAGE_NAME"))
 	},
 }
@@ -25,6 +29,7 @@ func Execute() error {
 }
 
 func init() {
+	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(buildCmd)
 	rootCmd.AddCommand(tagCmd)
