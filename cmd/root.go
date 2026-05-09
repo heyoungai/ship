@@ -1,9 +1,9 @@
 package cmd
 
 import (
-	"ship/internal"
 	"fmt"
 	"os"
+	"ship/internal"
 
 	"github.com/spf13/cobra"
 )
@@ -42,12 +42,18 @@ func init() {
 	rootCmd.AddCommand(historyCmd)
 }
 
-// printHeader 打印阶段标题
+// printHeader 打印阶段标题（轻量样式：▸ text）
 func printHeader(text string) {
-	fmt.Printf("\n%s\n", internal.StepStyle.Render("━━━ "+text+" ━━━"))
+	fmt.Printf("\n  %s %s\n", internal.HeaderStyle.Render("▸"), internal.HeaderStyle.Render(text))
 }
 
-// printDone 打印完成标题
+// printStep 打印带编号的阶段标题（如 [1/4] 构建镜像）
+func printStep(total, current int, text string) {
+	num := internal.StepNumStyle.Render(fmt.Sprintf("[%d/%d]", current, total))
+	fmt.Printf("\n  %s %s\n", internal.HeaderStyle.Render("▸"), num+" "+internal.HeaderStyle.Render(text))
+}
+
+// printDone 打印完成标题（✔ text）
 func printDone(text string) {
-	fmt.Printf("\n%s\n", internal.SuccessStyle.Render("━━━ "+text+" ━━━"))
+	fmt.Printf("\n  %s %s\n", internal.SuccessTagStyle.Render("✔"), internal.SuccessTagStyle.Render(text))
 }

@@ -31,7 +31,7 @@ func doInit() error {
 
 	// 检查是否已存在
 	if _, err := os.Stat(configFile); err == nil && !initForce {
-		fmt.Printf("%s ship.toml 已存在，使用 --force 覆盖\n", internal.WarnStyle.Render("⚠️"))
+		fmt.Printf("  %s ship.toml 已存在，使用 --force 覆盖\n", internal.WarnStyle.Render("▸"))
 		return nil
 	}
 
@@ -45,18 +45,18 @@ func doInit() error {
 	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
 		return fmt.Errorf("写入 ship.toml 失败: %w", err)
 	}
-	fmt.Printf("%s 已生成 ship.toml\n", internal.SuccessStyle.Render("✅"))
+	fmt.Printf("  %s 已生成 ship.toml\n", internal.SuccessStyle.Render("✔"))
 
 	// 将 .ship/ 加入 .gitignore
 	ensureGitignore()
 
-	fmt.Printf("\n%s\n", internal.DimStyle.Render("请检查并修改以下探测结果："))
+	fmt.Printf("\n  %s\n", internal.DimStyle.Render("请检查并修改以下探测结果："))
 	for k, v := range info {
 		if v != "" {
-			fmt.Printf("  %-15s %s\n", k+":", v)
+			fmt.Printf("    %-15s %s\n", k+":", v)
 		}
 	}
-	fmt.Printf("\n%s\n", internal.DimStyle.Render("ship.toml 可继续手动编辑，参考 config.example.toml"))
+	fmt.Printf("\n  %s\n", internal.DimStyle.Render("ship.toml 可继续手动编辑，参考 config.example.toml"))
 	return nil
 }
 
@@ -163,13 +163,13 @@ func ensureGitignore() {
 		// 文件不存在，创建
 		f, err = os.Create(gitignore)
 		if err != nil {
-			fmt.Printf("%s 创建 .gitignore 失败: %v\n", internal.WarnStyle.Render("⚠️"), err)
+			fmt.Printf("  %s 创建 .gitignore 失败: %v\n", internal.WarnStyle.Render("▸"), err)
 			return
 		}
 	} else {
 		f, err = os.OpenFile(gitignore, os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
-			fmt.Printf("%s 打开 .gitignore 失败: %v\n", internal.WarnStyle.Render("⚠️"), err)
+			fmt.Printf("  %s 打开 .gitignore 失败: %v\n", internal.WarnStyle.Render("▸"), err)
 			return
 		}
 	}
@@ -182,7 +182,7 @@ func ensureGitignore() {
 	_, _ = f.WriteString("\n# ship 部署历史（本机记录，不提交）\n")
 	_, _ = f.WriteString(entry + "\n")
 
-	fmt.Printf("%s 已将 %s 添加到 .gitignore\n", internal.SuccessStyle.Render("✅"), entry)
+	fmt.Printf("  %s 已将 %s 添加到 .gitignore\n", internal.SuccessStyle.Render("✔"), entry)
 }
 
 // generateConfig 根据探测信息生成 ship.toml 内容

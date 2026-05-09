@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"ship/internal"
 	"fmt"
+	"ship/internal"
 
 	"github.com/spf13/cobra"
 )
@@ -32,8 +32,9 @@ func init() {
 
 // doDeploy 远程部署：更新版本号并重启容器
 func doDeploy(version string) error {
-	fmt.Printf("%s 开始远程部署 version=%s...\n",
-		internal.StepStyle.Render("🛰️"), version)
+	fmt.Printf("  %s 远程部署  %s\n",
+		internal.StepStyle.Render("▸"),
+		internal.BoldStyle.Render("version="+version))
 
 	sedCmd := fmt.Sprintf(
 		"sed -i 's/^APP_IMAGE_TAG=.*/APP_IMAGE_TAG=%s/' %s/.env",
@@ -41,7 +42,7 @@ func doDeploy(version string) error {
 	)
 	if err := internal.RunCmd(
 		[]string{"ssh", cfg.Deploy.Host, sedCmd},
-		"更新远程 .env 文件...",
+		"更新远程 .env",
 	); err != nil {
 		return err
 	}
@@ -49,11 +50,11 @@ func doDeploy(version string) error {
 	restartCmd := fmt.Sprintf("cd %s && docker compose up -d", cfg.Deploy.Path)
 	if err := internal.RunCmd(
 		[]string{"ssh", cfg.Deploy.Host, restartCmd},
-		"重启远程容器...",
+		"重启远程容器",
 	); err != nil {
 		return err
 	}
 
-	fmt.Printf("%s 远程部署完成\n", internal.SuccessStyle.Render("✅"))
+	fmt.Printf("  %s 远程部署完成\n", internal.SuccessStyle.Render("✔"))
 	return nil
 }

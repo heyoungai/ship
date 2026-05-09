@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"ship/internal"
 	"fmt"
+	"ship/internal"
 
 	"github.com/spf13/cobra"
 )
@@ -43,29 +43,33 @@ func doTag(version string, profile internal.Profile) error {
 
 	// 打版本 tag（如 v2.1.0）
 	for _, target := range cfg.RegistryTargets(remoteTag) {
-		fmt.Printf("%s [%s] 打 tag: %s → %s\n",
-			internal.StepStyle.Render("🏷️"), name, cfg.ImageRef(localTag), target)
+		fmt.Printf("  %s %s  %s → %s\n",
+			internal.StepStyle.Render("▸"),
+			internal.BoldStyle.Render("["+name+"]"),
+			cfg.ImageRef(localTag), target)
 		if err := internal.RunCmd(
 			[]string{"docker", "tag", cfg.ImageRef(localTag), target},
-			fmt.Sprintf("打 tag [%s]: %s", name, target),
+			fmt.Sprintf("打 tag [%s]", name),
 		); err != nil {
 			return err
 		}
-		fmt.Printf("%s Tag 完成: %s\n", internal.SuccessStyle.Render("✅"), target)
+		fmt.Printf("  %s %s\n", internal.SuccessStyle.Render("✔"), target)
 	}
 
 	// 默认 profile 额外打 :latest tag
 	if profile.Default {
 		for _, target := range cfg.RegistryTargets("latest") {
-			fmt.Printf("%s [%s] 打 latest tag: %s\n",
-				internal.StepStyle.Render("🏷️"), name, target)
+			fmt.Printf("  %s %s  %s\n",
+				internal.StepStyle.Render("▸"),
+				internal.BoldStyle.Render("["+name+"]"),
+				internal.DimStyle.Render("→ latest"))
 			if err := internal.RunCmd(
 				[]string{"docker", "tag", cfg.ImageRef(localTag), target},
-				fmt.Sprintf("打 latest tag: %s", target),
+				fmt.Sprintf("打 latest tag [%s]", name),
 			); err != nil {
 				return err
 			}
-			fmt.Printf("%s latest Tag 完成: %s\n", internal.SuccessStyle.Render("✅"), target)
+			fmt.Printf("  %s %s\n", internal.SuccessStyle.Render("✔"), target)
 		}
 	}
 

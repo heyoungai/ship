@@ -2,3 +2,6 @@ ship
 ship.exe
 *.exe
 coverage.out
+
+# ship 部署历史（本机记录，不提交）
+.ship/

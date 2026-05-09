@@ -7,6 +7,9 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 )
 
 const historyDir = ".ship"
@@ -109,7 +112,7 @@ func getSortedTags() ([]string, error) {
 // FormatHistory 格式化历史记录用于终端显示
 func FormatHistory(entries []HistoryEntry, limit int) string {
 	if len(entries) == 0 {
-		return "  暂无部署记录"
+		return DimStyle.Render("  暂无部署记录")
 	}
 
 	start := 0
@@ -117,22 +120,34 @@ func FormatHistory(entries []HistoryEntry, limit int) string {
 		start = len(entries) - limit
 	}
 
-	var lines []string
+	var rows [][]string
 	for _, e := range entries[start:] {
-		icon := SuccessStyle.Render("✅")
+		icon := SuccessStyle.Render("✔")
 		action := "部署"
 		if e.Result == "fail" {
-			icon = ErrorStyle.Render("❌")
+			icon = ErrorStyle.Render("✖")
 		}
 		if e.Action == "rollback" {
 			action = "回滚"
 		}
 		note := e.Note
 		if note == "" {
-			note = "-"
+			note = DimStyle.Render("-")
 		}
-		lines = append(lines, fmt.Sprintf("  %s  %s %-6s  %-12s  %s",
-			e.Time, icon, action, e.Version, note))
+		rows = append(rows, []string{e.Time, icon + " " + action, e.Version, note})
 	}
-	return strings.Join(lines, "\n")
+
+	t := table.New().
+		Border(lipgloss.NormalBorder()).
+		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("245"))).
+		Headers("时间", "操作", "版本", "备注").
+		Rows(rows...).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == 0 {
+				return TableHeaderStyle.Padding(0, 1)
+			}
+			return lipgloss.NewStyle().Padding(0, 1)
+		})
+
+	return t.Render()
 }

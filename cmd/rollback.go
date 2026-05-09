@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"ship/internal"
 	"fmt"
+	"ship/internal"
 
 	"github.com/spf13/cobra"
 )
@@ -29,21 +29,22 @@ func doRollback() error {
 	if rollbackVersion != "" {
 		targetVersion = rollbackVersion
 	} else {
-		// 获取当前版本用于查找上一个
 		currentVersion, err := internal.ResolveVersion("")
 		if err != nil {
-			fmt.Printf("%s 无法确定当前版本\n", internal.ErrorStyle.Render("❌"))
+			fmt.Printf("  %s 无法确定当前版本\n", internal.ErrorStyle.Render("✖"))
 			return err
 		}
 
 		targetVersion, err = internal.GetPreviousVersion(currentVersion)
 		if err != nil {
-			fmt.Printf("%s %v\n", internal.ErrorStyle.Render("❌"), err)
+			fmt.Printf("  %s %v\n", internal.ErrorStyle.Render("✖"), err)
 			return err
 		}
 	}
 
-	fmt.Printf("%s 回滚到版本: %s\n", internal.WarnStyle.Render("⏪"), targetVersion)
+	fmt.Printf("  %s 回滚到版本: %s\n",
+		internal.WarnStyle.Render("▸"),
+		internal.BoldStyle.Render(targetVersion))
 
 	// 2. 执行部署
 	if err := doDeploy(targetVersion); err != nil {
@@ -53,6 +54,6 @@ func doRollback() error {
 
 	// 3. 记录历史
 	internal.RecordDeployment(targetVersion, "rollback", "success", "")
-	fmt.Printf("%s 回滚完成\n", internal.SuccessStyle.Render("✅"))
+	fmt.Printf("  %s 回滚完成\n", internal.SuccessStyle.Render("✔"))
 	return nil
 }

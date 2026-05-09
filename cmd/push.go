@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"ship/internal"
 	"fmt"
+	"ship/internal"
 
 	"github.com/spf13/cobra"
 )
@@ -41,29 +41,33 @@ func doPush(version string, profile internal.Profile) error {
 	name := internal.FormatProfileName(profile)
 
 	for _, target := range cfg.RegistryTargets(remoteTag) {
-		fmt.Printf("%s [%s] 推送镜像到 %s...\n",
-			internal.StepStyle.Render("📤"), name, target)
+		fmt.Printf("  %s %s  → %s\n",
+			internal.StepStyle.Render("▸"),
+			internal.BoldStyle.Render("["+name+"]"),
+			target)
 		if err := internal.RunCmd(
 			[]string{"docker", "push", target},
-			fmt.Sprintf("推送 [%s]: %s", name, target),
+			fmt.Sprintf("推送 [%s]", name),
 		); err != nil {
 			return err
 		}
-		fmt.Printf("%s 镜像已推送: %s\n", internal.SuccessStyle.Render("✅"), target)
+		fmt.Printf("  %s %s\n", internal.SuccessStyle.Render("✔"), target)
 	}
 
 	// 默认 profile 额外推送 :latest
 	if profile.Default {
 		for _, target := range cfg.RegistryTargets("latest") {
-			fmt.Printf("%s [%s] 推送 latest: %s\n",
-				internal.StepStyle.Render("📤"), name, target)
+			fmt.Printf("  %s %s  %s\n",
+				internal.StepStyle.Render("▸"),
+				internal.BoldStyle.Render("["+name+"]"),
+				internal.DimStyle.Render("→ latest"))
 			if err := internal.RunCmd(
 				[]string{"docker", "push", target},
-				fmt.Sprintf("推送 latest: %s", target),
+				fmt.Sprintf("推送 latest [%s]", name),
 			); err != nil {
 				return err
 			}
-			fmt.Printf("%s latest 已推送: %s\n", internal.SuccessStyle.Render("✅"), target)
+			fmt.Printf("  %s %s\n", internal.SuccessStyle.Render("✔"), target)
 		}
 	}
 

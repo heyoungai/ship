@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"ship/internal"
 	"fmt"
+	"ship/internal"
 
 	"github.com/spf13/cobra"
 )
@@ -33,19 +33,19 @@ func doBuild(profile internal.Profile, envFile string) error {
 		envFile = cfg.Build.EnvFile
 	}
 
+	name := internal.FormatProfileName(profile)
+
 	// 1. 可选：本地构建（如 Next.js）
 	localBuild := cfg.Build.LocalBuild
 	if localBuild == "" {
 		localBuild = internal.DetectLocalBuild()
 	}
 	if localBuild != "" {
-		name := internal.FormatProfileName(profile)
-		fmt.Printf("%s 本地构建 [%s]...\n", internal.StepStyle.Render("🏗️"), name)
+		fmt.Printf("  %s 本地构建 %s\n", internal.StepStyle.Render("▸"), internal.BoldStyle.Render("["+name+"]"))
 
 		// 加载 .env + profile env
 		buildArgs := internal.LoadBuildArgs(envFile)
 		envMap := make(map[string]string)
-		// 解析 build-args 为 env map
 		for i := 0; i < len(buildArgs)-1; i += 2 {
 			if buildArgs[i] == "--build-arg" {
 				parts := splitFirst(buildArgs[i+1], "=")
@@ -58,7 +58,7 @@ func doBuild(profile internal.Profile, envFile string) error {
 
 		if err := internal.RunCmdWithEnv(
 			[]string{"sh", "-c", localBuild},
-			fmt.Sprintf("本地构建 [%s]...", name),
+			fmt.Sprintf("本地构建 [%s]", name),
 			envMap,
 		); err != nil {
 			return err
@@ -68,9 +68,10 @@ func doBuild(profile internal.Profile, envFile string) error {
 	// 2. Docker buildx build
 	buildArgs := internal.LoadBuildArgs(envFile)
 	argCount := len(buildArgs) / 2
-	name := internal.FormatProfileName(profile)
-	fmt.Printf("%s 构建 Docker 镜像 [%s]（注入 %d 个 build-args）...\n",
-		internal.StepStyle.Render("📦"), name, argCount)
+	fmt.Printf("  %s 构建镜像 %s  %s\n",
+		internal.StepStyle.Render("▸"),
+		internal.BoldStyle.Render("["+name+"]"),
+		internal.DimStyle.Render(fmt.Sprintf("(%d build-args)", argCount)))
 
 	tag := internal.ImageTag("latest", profile)
 	args := []string{
@@ -87,11 +88,11 @@ func doBuild(profile internal.Profile, envFile string) error {
 
 	args = append(args, "--tag", cfg.ImageRef(tag), ".")
 
-	if err := internal.RunCmd(args, fmt.Sprintf("构建 Docker 镜像 [%s]...", name)); err != nil {
+	if err := internal.RunCmd(args, fmt.Sprintf("构建 [%s]", name)); err != nil {
 		return err
 	}
 
-	fmt.Printf("%s Docker 镜像构建完成: %s\n", internal.SuccessStyle.Render("✅"), cfg.ImageRef(tag))
+	fmt.Printf("  %s %s\n", internal.SuccessStyle.Render("✔"), cfg.ImageRef(tag))
 	return nil
 }
 

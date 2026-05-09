@@ -1,8 +1,8 @@
 package cmd
 
 import (
-	"ship/internal"
 	"fmt"
+	"ship/internal"
 
 	"github.com/spf13/cobra"
 )
@@ -24,6 +24,6 @@ func init() {
 // doHistory 显示部署历史
 func doHistory() {
 	entries := internal.LoadHistory()
-	fmt.Printf("%s\n", internal.BoldStyle.Render("📜 部署历史"))
+	fmt.Printf("\n  %s\n", internal.HeaderStyle.Render("▸ 部署历史"))
 	fmt.Println(internal.FormatHistory(entries, historyLimit))
 }

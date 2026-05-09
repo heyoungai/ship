@@ -61,7 +61,7 @@ func LoadConfig(imageName string) *Config {
 	// 2. 读取 ship.toml（如果存在）
 	if _, err := os.Stat("ship.toml"); err == nil {
 		if _, err := toml.DecodeFile("ship.toml", cfg); err != nil {
-			fmt.Printf("%s 读取 ship.toml 失败: %v\n", ErrorStyle.Render("❌"), err)
+			fmt.Printf("  %s 读取 ship.toml 失败: %v\n", ErrorStyle.Render("✖"), err)
 			os.Exit(1)
 		}
 	}
@@ -117,11 +117,11 @@ func (c *Config) validate() {
 	}
 
 	if len(missing) > 0 {
-		fmt.Printf("%s 配置缺失，请检查 ship.toml 或环境变量：\n", ErrorStyle.Render("❌"))
+		fmt.Printf("\n  %s %s\n", ErrorTagStyle.Render("✖"), ErrorTagStyle.Render("配置缺失"))
 		for _, m := range missing {
-			fmt.Printf("  • %s\n", m)
+			fmt.Printf("    %s %s\n", DimStyle.Render("•"), m)
 		}
-		fmt.Printf("\n%s\n", DimStyle.Render("参考 config.example.toml 创建 ship.toml"))
+		fmt.Printf("\n  %s\n", DimStyle.Render("参考 config.example.toml 创建 ship.toml"))
 		os.Exit(1)
 	}
 }
@@ -148,7 +148,7 @@ func (c *Config) GetProfiles(name string) []Profile {
 				return []Profile{p}
 			}
 		}
-		fmt.Printf("%s 未找到 profile: %s\n", ErrorStyle.Render("❌"), name)
+		fmt.Printf("  %s 未找到 profile: %s\n", ErrorStyle.Render("✖"), name)
 		os.Exit(1)
 	}
 	return c.Matrix
@@ -192,13 +192,13 @@ func LoadBuildArgs(envFile string) []string {
 
 	path := filepath.Clean(envFile)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		fmt.Printf("%s 未找到 %s，将不注入 build args。\n", InfoStyle.Render("ℹ️"), envFile)
+		fmt.Printf("  %s 未找到 %s，将不注入 build args\n", InfoStyle.Render("▸"), envFile)
 		return nil
 	}
 
 	envMap, err := godotenv.Read(path)
 	if err != nil {
-		fmt.Printf("%s 读取 %s 失败: %v\n", ErrorStyle.Render("❌"), envFile, err)
+		fmt.Printf("  %s 读取 %s 失败: %v\n", ErrorStyle.Render("✖"), envFile, err)
 		return nil
 	}
 
