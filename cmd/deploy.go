@@ -17,7 +17,12 @@ var deployCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return doDeploy(ver)
+		if err := doDeploy(ver); err != nil {
+			internal.RecordDeployment(ver, "deploy", "fail", err.Error())
+			return err
+		}
+		internal.RecordDeployment(ver, "deploy", "success", "")
+		return nil
 	},
 }
 

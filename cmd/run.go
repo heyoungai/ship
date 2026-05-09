@@ -62,8 +62,10 @@ var runCmd = &cobra.Command{
 		if !runSkipDeploy && cfg.Deploy.Enabled {
 			printHeader("远程部署")
 			if err := doDeploy(ver); err != nil {
+				internal.RecordDeployment(ver, "deploy", "fail", err.Error())
 				return err
 			}
+			internal.RecordDeployment(ver, "deploy", "success", "")
 		} else if runSkipDeploy {
 			fmt.Printf("%s 已跳过远程部署\n", internal.WarnStyle.Render("⏭️"))
 		}

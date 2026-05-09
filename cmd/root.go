@@ -17,7 +17,7 @@ var rootCmd = &cobra.Command{
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// 不需要配置的命令
 		switch cmd.Name() {
-		case "init", "version", "current", "help", "completion":
+		case "init", "version", "current", "history", "help", "completion":
 			return
 		}
 		cfg = internal.LoadConfig(os.Getenv("IMAGE_NAME"))
@@ -38,6 +38,8 @@ func init() {
 	rootCmd.AddCommand(pushCmd)
 	rootCmd.AddCommand(deployCmd)
 	rootCmd.AddCommand(runCmd)
+	rootCmd.AddCommand(rollbackCmd)
+	rootCmd.AddCommand(historyCmd)
 }
 
 // printHeader 打印阶段标题
