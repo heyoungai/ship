@@ -49,7 +49,6 @@ var runCmd = &cobra.Command{
 				return err
 			}
 		}
-		internal.ProgressDone()
 
 		// 2. Tag
 		internal.ProgressStep(2, "打 Tag")
@@ -58,7 +57,6 @@ var runCmd = &cobra.Command{
 				return err
 			}
 		}
-		internal.ProgressDone()
 
 		// 3. Push
 		internal.ProgressStep(3, "推送镜像")
@@ -67,7 +65,6 @@ var runCmd = &cobra.Command{
 				return err
 			}
 		}
-		internal.ProgressDone()
 
 		// 4. Deploy
 		if !runSkipDeploy && cfg.Deploy.Enabled {
@@ -77,12 +74,10 @@ var runCmd = &cobra.Command{
 				return err
 			}
 			internal.RecordDeployment(ver, "deploy", "success", "")
-			internal.ProgressDone()
 		} else if runSkipDeploy {
 			fmt.Printf("  %s 已跳过远程部署\n", internal.WarnStyle.Render("⏭"))
 		}
 
-		internal.ProgressFinish()
 		fmt.Printf("\n  %s\n", internal.SuccessTagStyle.Render("✔ 所有任务已完成"))
 		return nil
 	},

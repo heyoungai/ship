@@ -43,7 +43,6 @@ func doDeploy(version string) error {
 	); err != nil {
 		return err
 	}
-	internal.ProgressDone()
 
 	restartCmd := fmt.Sprintf("cd %s && docker compose up -d", cfg.Deploy.Path)
 	internal.ProgressSub(fmt.Sprintf("ssh %s: docker compose up", cfg.Deploy.Host))
@@ -53,7 +52,6 @@ func doDeploy(version string) error {
 	); err != nil {
 		return err
 	}
-	internal.ProgressDone()
 
 	return nil
 }

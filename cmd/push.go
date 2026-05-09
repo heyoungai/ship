@@ -56,7 +56,6 @@ func doPush(version string, profile internal.Profile) error {
 		); err != nil {
 			return err
 		}
-		internal.ProgressDone()
 	}
 
 	if profile.Default {
@@ -72,7 +71,6 @@ func doPush(version string, profile internal.Profile) error {
 			); err != nil {
 				return err
 			}
-			internal.ProgressDone()
 		}
 	}
 

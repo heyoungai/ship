@@ -20,9 +20,7 @@ var buildCmd = &cobra.Command{
 			if err := doBuild(p, buildEnvFile); err != nil {
 				return err
 			}
-			internal.ProgressDone()
 		}
-		internal.ProgressFinish()
 		return nil
 	},
 }
@@ -71,7 +69,6 @@ func doBuild(profile internal.Profile, envFile string) error {
 		); err != nil {
 			return err
 		}
-		internal.ProgressDone()
 	}
 
 	// 2. Docker buildx build
@@ -101,7 +98,6 @@ func doBuild(profile internal.Profile, envFile string) error {
 	if err := internal.RunCmd(args, cfg.ImageRef(tag)); err != nil {
 		return err
 	}
-	internal.ProgressDone()
 
 	return nil
 }
