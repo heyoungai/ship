@@ -1,52 +1,220 @@
-# ship 配置文件
+# ship.toml v2 草案
 # 放在项目根目录，命名为 ship.toml
+#
+# 注意：
+# 1. 这是下一代配置模型草案，用于指导 ship 后续演进
+# 2. 当前代码并未完整实现本文件中的全部字段与 driver
+# 3. 目标是同时覆盖 Docker 项目、组装型项目、Go 二进制项目
 
-# ── 构建设置 ────────────────────────────────────────────────
+schema = 2
+
+# ── 项目元信息 ────────────────────────────────────────────────────
+[project]
+name = "home"
+description = "标准 Docker 镜像项目示例"
+
+# ── 版本来源 ──────────────────────────────────────────────────────
+[version]
+source = "git-tag"              # git-tag | env | static
+fallback = "error"              # error | dev | static
+static = ""                     # fallback=static 时使用
+override_env = "SHIP_VERSION"   # 外部显式传入版本时使用
+
+# ── 功能开关 ──────────────────────────────────────────────────────
+[features]
+publish = true
+deploy = true
+rollback = true
+verify = true
+
+# ── 自定义变量（可用于模板与插值）──────────────────────────────────
+[vars]
+app_name = "home"
+remote_tag_key = "APP_IMAGE_TAG"
+
+# ── 构建前准备步骤（可选）──────────────────────────────────────────
+[[steps.prepare]]
+name = "build-frontend"
+run = "bun run build"
+cwd = "."
+profiles = ["*"]                # "*" 表示全部 profile
+
+# 组装型项目可在 prepare 阶段执行后端 publish、资源复制等动作
+# [[steps.prepare]]
+# name = "publish-backend"
+# run = "dotnet publish ./src/BE/web/Chats.BE.csproj -c Release -o ./dist"
+# cwd = "."
+# profiles = ["*"]
+
+# ── 构建阶段 ──────────────────────────────────────────────────────
 [build]
-platforms = "linux/amd64"           # 目标平台；当前分阶段流程会把镜像 load 回本地，因此应保持单平台
-dockerfile = "./Dockerfile"         # Dockerfile 路径
-env_file = "./.env.local"           # .env 文件路径，用于注入 build-args
+driver = "docker"               # docker | go-binary | command
 
-# 可选：本地构建命令（留空则跳过本地构建，直接 docker buildx build）
-# 自动检测：yarn.lock → yarn build, pnpm-lock.yaml → pnpm run build, 等
-# local_build = "bun run build"
+[build.docker]
+image = "home"
+context = "."
+dockerfile = "./Dockerfile"
+platforms = ["linux/amd64"]
+env_file = "./.env.local"
+local_build = "bun run build"
+build_args_from_env = true
+load = true
+latest_on_default_profile = true
+disable_buildkit = false
+cache_bust = false
 
-# ── 镜像仓库 ────────────────────────────────────────────────
-[[registries]]
-type = "private"                    # dockerhub | private
+# 需要显式写死的 build args 时可使用：
+# [build.docker.build_args]
+# NEXT_PUBLIC_API_BASE = "https://api.example.com"
+
+# Go 二进制项目示例：
+# [build]
+# driver = "go-binary"
+#
+# [build.go]
+# main = "./cmd/swag-cli"
+# output = "./build/{{ executable_name }}"
+# goos = "linux"
+# goarch = "amd64"
+# cgo_enabled = false
+# executable_name = "swag-cli"
+# ldflags = [
+#   "-s",
+#   "-w",
+#   "-X {{ module }}/internal/cli.Version={{ version }}"
+# ]
+
+# 自定义命令项目示例：
+# [build]
+# driver = "command"
+#
+# [build.command]
+# run = "make build"
+# cwd = "."
+# outputs = ["./dist/app"]
+
+# ── 模板文件生成（可选）────────────────────────────────────────────
+[[templates]]
+path = "./deploy/.env"
+profiles = ["*"]
+content = """
+APP_IMAGE_TAG={{ version }}
+"""
+
+# 组装型项目可生成运行时 Dockerfile / compose / env
+# [[templates]]
+# path = "./dist/Dockerfile"
+# profiles = ["*"]
+# content = """
+# FROM mcr.microsoft.com/dotnet/aspnet:10.0
+# WORKDIR /app
+# COPY . /app
+# ENTRYPOINT ["dotnet", "Chats.BE.dll"]
+# """
+#
+# [[templates]]
+# path = "./dist-docker/docker-compose.yaml"
+# profiles = ["*"]
+# from = "./scripts/templates/docker-compose.tpl"
+
+# ── 发布阶段 ──────────────────────────────────────────────────────
+[publish]
+driver = "registry"             # registry | scp | none
+
+[publish.registry]
+push = true
+tag_latest_on_default_profile = true
+
+[[publish.registry.targets]]
+type = "private"                # dockerhub | private
 url = "registry.cn-hangzhou.aliyuncs.com"
 namespace = "deali"
 image = "home"
 
-# 可以配置多个仓库
-# [[registries]]
+# 可配置多个镜像仓库
+# [[publish.registry.targets]]
 # type = "dockerhub"
-# namespace = "deali"
+# namespace = "dealiaxy"
 # image = "home"
 
-# ── 远程部署 ────────────────────────────────────────────────
+# Go 二进制 / 文件上传项目示例：
+# [publish]
+# driver = "scp"
+#
+# [publish.scp]
+# local = "./build/swag-cli"
+# host = "deali.cn"
+# remote = "/tmp/swag-cli"
+
+# ── 部署阶段 ──────────────────────────────────────────────────────
 [deploy]
-enabled = true
-host = "deali.cn"                   # SSH Host（~/.ssh/config 别名或 user@ip）
-path = "/home/deali/projects/home"  # 远程项目路径
+driver = "compose"              # compose | binary-install | ssh | none
 
-# 可选：部署后健康检查。配置后 ship 会等待服务真正可用，再把本次部署视为成功。
-#[deploy.healthcheck]
-#url = "https://deali.cn/api/health"
-#expected_status = 200
-#attempts = 20
-#interval_seconds = 3
-#timeout_seconds = 5
+[deploy.compose]
+host = "deali.cn"               # SSH Host（~/.ssh/config 别名或 user@ip）
+path = "/home/deali/projects/home"
+env_file = ".env"
+tag_key = "{{ vars.remote_tag_key }}"
+up = "docker compose --env-file ./.env up -d --remove-orphans"
 
-# ── 矩阵构建（可选）────────────────────────────────────────
-# 用于多品牌/多变体场景，同一份代码构建出不同的镜像
-# 不配置此项则走默认单次构建流程
+# Go 二进制安装示例：
+# [deploy]
+# driver = "binary-install"
 #
-# [[matrix]]
-# name = "brand-a"                  # 变体名称，用作镜像 tag 后缀（如 v2.0.0-brand-a）
-# default = true                    # 默认变体，额外打 :latest tag
-# env = { NEXT_PUBLIC_APP_BRAND = "brand-a" }
+# [deploy.binary_install]
+# host = "deali.cn"
+# remote_temp_path = "/tmp"
+# remote_install_path = "/usr/local/bin"
+# use_ssh_tty = true
+# sudo_nopasswd = false
+# chmod = "+x"
+
+# 任意 SSH 命令示例：
+# [deploy]
+# driver = "ssh"
 #
-# [[matrix]]
-# name = "brand-b"
-# env = { NEXT_PUBLIC_APP_BRAND = "brand-b" }
+# [deploy.ssh]
+# host = "deali.cn"
+# commands = [
+#   "systemctl restart my-service",
+#   "systemctl status my-service --no-pager"
+# ]
+
+# ── 部署后校验（可选）──────────────────────────────────────────────
+[verify]
+driver = "http"                 # http | ssh | command | none
+
+[verify.http]
+url = "https://deali.cn/api/health"
+expected_status = 200
+attempts = 20
+interval_seconds = 3
+timeout_seconds = 5
+
+# SSH 校验示例：
+# [verify]
+# driver = "ssh"
+#
+# [verify.ssh]
+# host = "deali.cn"
+# command = "docker compose ps"
+
+# 本地命令校验示例：
+# [verify]
+# driver = "command"
+#
+# [verify.command]
+# run = "test -f ./deploy/.env"
+# shell = "sh"
+
+# ── 矩阵构建（可选）───────────────────────────────────────────────
+[[matrix]]
+name = "brand-a"
+default = true
+env = { NEXT_PUBLIC_APP_BRAND = "brand-a" }
+vars = { brand = "brand-a" }
+
+[[matrix]]
+name = "brand-b"
+env = { NEXT_PUBLIC_APP_BRAND = "brand-b" }
+vars = { brand = "brand-b" }
