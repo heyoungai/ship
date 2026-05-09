@@ -41,12 +41,15 @@ func doInit() error {
 	// 生成配置内容
 	content := generateConfig(info)
 
-	// 写入文件
+	// 写入 ship.toml
 	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
 		return fmt.Errorf("写入 ship.toml 失败: %w", err)
 	}
-
 	fmt.Printf("%s 已生成 ship.toml\n", internal.SuccessStyle.Render("✅"))
+
+	// 将 .ship/ 加入 .gitignore
+	ensureGitignore()
+
 	fmt.Printf("\n%s\n", internal.DimStyle.Render("请检查并修改以下探测结果："))
 	for k, v := range info {
 		if v != "" {
@@ -141,6 +144,45 @@ func mustGetwd() string {
 		return "."
 	}
 	return wd
+}
+
+// ensureGitignore 将 .ship/ 添加到 .gitignore（如尚未存在）
+func ensureGitignore() {
+	const entry = ".ship/"
+	const gitignore = ".gitignore"
+
+	data, err := os.ReadFile(gitignore)
+	if err == nil && strings.Contains(string(data), entry) {
+		// 已存在，跳过
+		return
+	}
+
+	// 追加到 .gitignore
+	var f *os.File
+	if err != nil {
+		// 文件不存在，创建
+		f, err = os.Create(gitignore)
+		if err != nil {
+			fmt.Printf("%s 创建 .gitignore 失败: %v\n", internal.WarnStyle.Render("⚠️"), err)
+			return
+		}
+	} else {
+		f, err = os.OpenFile(gitignore, os.O_APPEND|os.O_WRONLY, 0644)
+		if err != nil {
+			fmt.Printf("%s 打开 .gitignore 失败: %v\n", internal.WarnStyle.Render("⚠️"), err)
+			return
+		}
+	}
+	defer f.Close()
+
+	// 如果文件非空且末尾没有换行，先加一个换行
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		_, _ = f.WriteString("\n")
+	}
+	_, _ = f.WriteString("\n# ship 部署历史（本机记录，不提交）\n")
+	_, _ = f.WriteString(entry + "\n")
+
+	fmt.Printf("%s 已将 %s 添加到 .gitignore\n", internal.SuccessStyle.Render("✅"), entry)
 }
 
 // generateConfig 根据探测信息生成 ship.toml 内容
