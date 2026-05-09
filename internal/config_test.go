@@ -7,6 +7,28 @@ import (
 	"testing"
 )
 
+func withTempConfigDir(t *testing.T, files map[string]string, fn func()) {
+	t.Helper()
+	dir := t.TempDir()
+	origDir, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("os.Chdir(%q) error: %v", dir, err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	for name, content := range files {
+		fullPath := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+			t.Fatalf("MkdirAll(%q) error: %v", fullPath, err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+			t.Fatalf("WriteFile(%q) error: %v", fullPath, err)
+		}
+	}
+
+	fn()
+}
+
 // ── ImageTag ────────────────────────────────────────────────────
 
 func TestImageTag_DefaultProfile(t *testing.T) {
@@ -362,5 +384,153 @@ func TestShellEscape(t *testing.T) {
 	want := `'a'"'"'b'`
 	if got != want {
 		t.Fatalf("ShellEscape = %q, want %q", got, want)
+	}
+}
+
+// ── V2 Config ─────────────────────────────────────────────────────
+
+func TestLoadConfig_V2DockerRegistryComposeCompatibility(t *testing.T) {
+	withTempConfigDir(t, map[string]string{
+		"ship.toml": `
+schema = 2
+
+[build]
+driver = "docker"
+
+[build.docker]
+image = "home"
+dockerfile = "./Dockerfile"
+platforms = ["linux/amd64"]
+env_file = "./.env.local"
+local_build = "bun run build"
+
+[publish]
+driver = "registry"
+
+[[publish.registry.targets]]
+type = "private"
+url = "registry.cn-hangzhou.aliyuncs.com"
+namespace = "deali"
+image = "home"
+
+[deploy]
+driver = "compose"
+
+[deploy.compose]
+host = "deali.cn"
+path = "/home/deali/projects/home"
+`,
+	}, func() {
+		cfg, err := LoadConfig("")
+		if err != nil {
+			t.Fatalf("LoadConfig(v2 docker) error: %v", err)
+		}
+		if cfg.Schema != 2 {
+			t.Fatalf("cfg.Schema = %d, want 2", cfg.Schema)
+		}
+		if cfg.Build.Driver != "docker" {
+			t.Fatalf("cfg.Build.Driver = %q, want docker", cfg.Build.Driver)
+		}
+		if cfg.Build.Platforms != "linux/amd64" {
+			t.Fatalf("cfg.Build.Platforms = %q, want linux/amd64", cfg.Build.Platforms)
+		}
+		if cfg.Build.Dockerfile != "./Dockerfile" {
+			t.Fatalf("cfg.Build.Dockerfile = %q", cfg.Build.Dockerfile)
+		}
+		if cfg.Build.EnvFile != "./.env.local" {
+			t.Fatalf("cfg.Build.EnvFile = %q", cfg.Build.EnvFile)
+		}
+		if cfg.ImageName != "home" {
+			t.Fatalf("cfg.ImageName = %q, want home", cfg.ImageName)
+		}
+		if len(cfg.Registries) != 1 {
+			t.Fatalf("len(cfg.Registries) = %d, want 1", len(cfg.Registries))
+		}
+		if !cfg.Deploy.Enabled {
+			t.Fatal("cfg.Deploy.Enabled should be true for v2 compose config")
+		}
+		if cfg.Deploy.Host != "deali.cn" || cfg.Deploy.Path != "/home/deali/projects/home" {
+			t.Fatalf("legacy deploy mapping mismatch: host=%q path=%q", cfg.Deploy.Host, cfg.Deploy.Path)
+		}
+		if cfg.Deploy.Compose.TagKey != "APP_IMAGE_TAG" {
+			t.Fatalf("cfg.Deploy.Compose.TagKey = %q, want APP_IMAGE_TAG", cfg.Deploy.Compose.TagKey)
+		}
+	})
+}
+
+func TestLoadConfig_V2DriverInference(t *testing.T) {
+	withTempConfigDir(t, map[string]string{
+		"ship.toml": `
+schema = 2
+
+[build.go]
+main = "./cmd/swag-cli"
+output = "./build/swag-cli"
+
+[publish.scp]
+local = "./build/swag-cli"
+host = "deali.cn"
+remote = "/tmp/swag-cli"
+
+[deploy.binary_install]
+host = "deali.cn"
+remote_install_path = "/usr/local/bin"
+`,
+	}, func() {
+		cfg, err := LoadConfig("")
+		if err != nil {
+			t.Fatalf("LoadConfig(v2 inference) error: %v", err)
+		}
+		if cfg.Build.Driver != "go-binary" {
+			t.Fatalf("cfg.Build.Driver = %q, want go-binary", cfg.Build.Driver)
+		}
+		if cfg.Publish.Driver != "scp" {
+			t.Fatalf("cfg.Publish.Driver = %q, want scp", cfg.Publish.Driver)
+		}
+		if cfg.Deploy.Driver != "binary-install" {
+			t.Fatalf("cfg.Deploy.Driver = %q, want binary-install", cfg.Deploy.Driver)
+		}
+	})
+}
+
+func TestValidate_V2GoBinarySCPBinaryInstallSuccess(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	cfg.Schema = 2
+	cfg.Build.Driver = "go-binary"
+	cfg.Build.Go.Main = "./cmd/swag-cli"
+	cfg.Build.Go.Output = "./build/swag-cli"
+	cfg.Publish.Driver = "scp"
+	cfg.Publish.SCP.Local = "./build/swag-cli"
+	cfg.Publish.SCP.Host = "deali.cn"
+	cfg.Publish.SCP.Remote = "/tmp/swag-cli"
+	cfg.Deploy.Driver = "binary-install"
+	cfg.Deploy.BinaryInstall.Host = "deali.cn"
+	cfg.Deploy.BinaryInstall.RemoteInstallPath = "/usr/local/bin"
+	cfg.Verify.Driver = "none"
+	cfg.normalize()
+
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate(v2 go-binary) error: %v", err)
+	}
+}
+
+func TestValidate_V2MissingPublishTargets(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	cfg.Schema = 2
+	cfg.Build.Driver = "docker"
+	cfg.Build.Docker.Image = "home"
+	cfg.Publish.Driver = "registry"
+	cfg.Features.Deploy = false
+	cfg.Features.Verify = false
+	cfg.normalize()
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate should fail when v2 registry publish has no targets")
+	}
+	if !strings.Contains(err.Error(), "publish.registry.targets") {
+		t.Fatalf("Validate error should mention publish.registry.targets, got: %v", err)
 	}
 }
