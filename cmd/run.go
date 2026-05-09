@@ -50,7 +50,14 @@ var runCmd = &cobra.Command{
 			ver, strings.Join(profileNames, ", "),
 		))
 		internal.SetProgressTotal(totalSteps)
-		internal.PrintRunPlan(ver, profileNames, runEnvFile, !runSkipDeploy && cfg.Deploy.Enabled, steps)
+		internal.PrintRunSummary(
+			ver,
+			strings.Join(profileNames, ", "),
+			runEnvFile,
+			totalSteps,
+			!runSkipDeploy && cfg.Deploy.Enabled,
+		)
+		internal.PrintInfo(fmt.Sprintf("plan=%s", strings.Join(steps, " → ")))
 
 		// 1. Build
 		internal.ProgressStep(1, "构建镜像")

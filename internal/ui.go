@@ -3,7 +3,6 @@ package internal
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/pterm/pterm"
 )
@@ -18,7 +17,7 @@ func SetProgressTotal(total int) {
 // PrintBanner 输出一级标题，用于 run/history 等命令的整体抬头。
 func PrintBanner(title string) {
 	pterm.Println()
-	pterm.DefaultHeader.Println(title)
+	pterm.DefaultSection.Println(title)
 }
 
 // ProgressInit 初始化阶段输出。
@@ -52,39 +51,23 @@ func PrintInfo(message string) {
 	pterm.Info.Println(message)
 }
 
-// PrintRunPlan 用面板展示 run 命令的执行上下文，避免开场信息散落在多行里。
-func PrintRunPlan(version string, profiles []string, envFile string, deployEnabled bool, steps []string) {
-	deployText := "关闭"
+// PrintRunSummary 输出 run 命令的简洁摘要。
+func PrintRunSummary(version, profiles, envFile string, totalSteps int, deployEnabled bool) {
+	deployText := "off"
 	if deployEnabled {
-		deployText = "开启"
+		deployText = "on"
 	}
-	envText := envFile
-	if strings.TrimSpace(envText) == "" {
-		envText = "(使用配置默认值)"
+	if envFile == "" {
+		envFile = "(config default)"
 	}
-	profileText := strings.Join(profiles, ", ")
-	if strings.TrimSpace(profileText) == "" {
-		profileText = "default"
-	}
-
-	summary := pterm.DefaultBox.WithTitle("执行信息").Sprint(strings.Join([]string{
-		fmt.Sprintf("版本: %s", version),
-		fmt.Sprintf("Profiles: %s", profileText),
-		fmt.Sprintf("Env File: %s", envText),
-		fmt.Sprintf("远程部署: %s", deployText),
-	}, "\n"))
-	stepLines := make([]string, len(steps))
-	for i, step := range steps {
-		stepLines[i] = fmt.Sprintf("%d. %s", i+1, step)
-	}
-	stepPanel := pterm.DefaultBox.WithTitle("执行计划").Sprint(strings.Join(stepLines, "\n"))
-
-	_ = pterm.DefaultPanel.WithPanels(pterm.Panels{
-		{
-			{Data: summary},
-			{Data: stepPanel},
-		},
-	}).WithPadding(2).Render()
+	PrintInfo(fmt.Sprintf(
+		"version=%s | profiles=%s | env=%s | deploy=%s | steps=%d",
+		version,
+		profiles,
+		envFile,
+		deployText,
+		totalSteps,
+	))
 }
 
 // PrintKeyValueTable 用表格展示键值对结果，适合 init 探测信息等静态输出。
