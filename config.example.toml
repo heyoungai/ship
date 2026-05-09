@@ -1,0 +1,44 @@
+# ship 配置文件
+# 放在项目根目录，命名为 ship.toml
+
+# ── 构建设置 ────────────────────────────────────────────────
+[build]
+platforms = "linux/amd64"           # 目标平台
+dockerfile = "./Dockerfile"         # Dockerfile 路径
+env_file = "./.env.local"           # .env 文件路径，用于注入 build-args
+
+# 可选：本地构建命令（留空则跳过本地构建，直接 docker buildx build）
+# 自动检测：yarn.lock → yarn build, pnpm-lock.yaml → pnpm run build, 等
+# local_build = "bun run build"
+
+# ── 镜像仓库 ────────────────────────────────────────────────
+[[registries]]
+type = "private"                    # dockerhub | private
+url = "registry.cn-hangzhou.aliyuncs.com"
+namespace = "deali"
+image = "home"
+
+# 可以配置多个仓库
+# [[registries]]
+# type = "dockerhub"
+# namespace = "deali"
+# image = "home"
+
+# ── 远程部署 ────────────────────────────────────────────────
+[deploy]
+enabled = true
+host = "deali.cn"                   # SSH Host（~/.ssh/config 别名或 user@ip）
+path = "/home/deali/projects/home"  # 远程项目路径
+
+# ── 矩阵构建（可选）────────────────────────────────────────
+# 用于多品牌/多变体场景，如 canvas-studio 的多品牌构建
+# 不配置此项则走默认单次构建流程
+#
+# [[matrix]]
+# name = "linglu"                   # 变体名称，用作 tag 后缀
+# default = true                    # 默认变体，额外打 :latest tag
+# env = { NEXT_PUBLIC_APP_BRAND = "linglu", NEXT_PUBLIC_API_URL = "https://api.linglu.com" }
+#
+# [[matrix]]
+# name = "fumian-denim"
+# env = { NEXT_PUBLIC_APP_BRAND = "fumian-denim", NEXT_PUBLIC_API_URL = "https://api.fumian.com" }
