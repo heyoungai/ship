@@ -2,7 +2,7 @@
 
 Docker 镜像构建、推送和远程部署 CLI 工具。Go 实现，编译为单二进制，无运行时依赖。
 
-支持 `ship.toml` 配置文件和矩阵构建（多品牌/多变体）。
+支持 `ship.toml` 配置文件和矩阵构建（多品牌/多变体）。命令层基于 **Cobra**，输出层使用 **PTerm**，交互确认使用 **Huh**。
 
 当前 `build → tag → push` 分阶段流程会将 `docker buildx` 产物 `--load` 回本地 Docker，再继续后续步骤，因此 **`build.platforms` 目前应保持单平台**（如 `linux/amd64`）。
 
@@ -55,6 +55,8 @@ task build
 ./ship.exe run --skip-deploy
 ./ship.exe run -v v2.0.0 --env-file ./.env.local
 ./ship.exe run -p brand-a
+./ship.exe init --yes
+./ship.exe rollback --yes
 
 # 矩阵构建：指定 profile
 ./ship.exe build -p brand-a
@@ -151,6 +153,12 @@ env = { NEXT_PUBLIC_APP_BRAND = "brand-b" }
 
 配置 `[deploy.healthcheck]` 后，`deploy` / `run` / `rollback` 会在远程 `docker compose up -d` 之后轮询 URL，只有返回期望状态码才算成功。
 
+### 交互确认
+
+- `init` 检测到已有 `ship.toml` 时，会弹出 Huh 确认
+- `rollback` 执行前，会弹出 Huh 最终确认
+- 在 CI 或非交互终端中，请使用 `-y` / `--yes` 跳过确认
+
 ## 环境变量
 
 | 变量 | 说明 |
@@ -167,6 +175,7 @@ env = { NEXT_PUBLIC_APP_BRAND = "brand-b" }
 - `build` 现已支持 `-p/--profile`
 - `local_build` 会按平台选择 shell：Windows 使用 PowerShell，Linux/macOS 使用 `sh`
 - 历史记录写入与配置校验不再静默失败，错误会直接向上返回
+- 阶段输出、历史表格和提示已切到 PTerm，避免继续维护手写进度输出
 
 ## 开发
 
@@ -190,6 +199,7 @@ task clean
 ## 依赖
 
 - [cobra](https://github.com/spf13/cobra) — CLI 框架
+- [pterm](https://github.com/pterm/pterm) — 终端输出、section、table
+- [huh](https://github.com/charmbracelet/huh) — 交互式确认与表单
 - [toml](https://github.com/BurntSushi/toml) — TOML 配置解析
 - [godotenv](https://github.com/joho/godotenv) — .env 文件解析
-- [lipgloss](https://github.com/charmbracelet/lipgloss) — 终端样式

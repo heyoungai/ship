@@ -27,7 +27,7 @@ func doHistory() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("\n  %s\n", internal.HeaderStyle.Render("▸ 部署历史"))
+	internal.PrintBanner("部署历史")
 	fmt.Println(internal.FormatHistory(entries, historyLimit))
 	return nil
 }

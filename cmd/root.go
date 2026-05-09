@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"os"
 	"ship/internal"
 
@@ -46,20 +45,4 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(rollbackCmd)
 	rootCmd.AddCommand(historyCmd)
-}
-
-// printHeader 打印阶段标题（轻量样式：▸ text）
-func printHeader(text string) {
-	fmt.Printf("\n  %s %s\n", internal.HeaderStyle.Render("▸"), internal.HeaderStyle.Render(text))
-}
-
-// printStep 打印带编号的阶段标题（如 [1/4] 构建镜像）
-func printStep(total, current int, text string) {
-	num := internal.StepNumStyle.Render(fmt.Sprintf("[%d/%d]", current, total))
-	fmt.Printf("\n  %s %s\n", internal.HeaderStyle.Render("▸"), num+" "+internal.HeaderStyle.Render(text))
-}
-
-// printDone 打印完成标题（✔ text）
-func printDone(text string) {
-	fmt.Printf("\n  %s %s\n", internal.SuccessTagStyle.Render("✔"), internal.SuccessTagStyle.Render(text))
 }

@@ -8,8 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/lipgloss/table"
+	"github.com/pterm/pterm"
 )
 
 const historyDir = ".ship"
@@ -131,7 +130,7 @@ func getSortedTags() ([]string, error) {
 // FormatHistory 格式化历史记录用于终端显示
 func FormatHistory(entries []HistoryEntry, limit int) string {
 	if len(entries) == 0 {
-		return DimStyle.Render("  暂无部署记录")
+		return "暂无部署记录"
 	}
 
 	start := 0
@@ -139,34 +138,28 @@ func FormatHistory(entries []HistoryEntry, limit int) string {
 		start = len(entries) - limit
 	}
 
-	var rows [][]string
+	data := pterm.TableData{{"时间", "操作", "版本", "备注"}}
 	for _, e := range entries[start:] {
-		icon := SuccessStyle.Render("✔")
 		action := "部署"
 		if e.Result == "fail" {
-			icon = ErrorStyle.Render("✖")
+			action = "失败部署"
 		}
 		if e.Action == "rollback" {
 			action = "回滚"
+			if e.Result == "fail" {
+				action = "失败回滚"
+			}
 		}
 		note := e.Note
 		if note == "" {
-			note = DimStyle.Render("-")
+			note = "-"
 		}
-		rows = append(rows, []string{e.Time, icon + " " + action, e.Version, note})
+		data = append(data, []string{e.Time, action, e.Version, note})
 	}
 
-	t := table.New().
-		Border(lipgloss.NormalBorder()).
-		BorderStyle(lipgloss.NewStyle().Foreground(lipgloss.Color("245"))).
-		Headers("时间", "操作", "版本", "备注").
-		Rows(rows...).
-		StyleFunc(func(row, col int) lipgloss.Style {
-			if row == 0 {
-				return TableHeaderStyle.Padding(0, 1)
-			}
-			return lipgloss.NewStyle().Padding(0, 1)
-		})
-
-	return t.Render()
+	rendered, err := pterm.DefaultTable.WithHasHeader().WithData(data).Srender()
+	if err != nil {
+		return fmt.Sprintf("渲染部署历史失败: %v", err)
+	}
+	return rendered
 }

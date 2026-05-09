@@ -61,7 +61,7 @@ func doDeploy(version string) error {
 		if err := internal.WaitForHealthcheck(cfg.Deploy.Healthcheck); err != nil {
 			return err
 		}
-		fmt.Printf("  %s 健康检查通过\n", internal.SuccessStyle.Render("✔"))
+		internal.PrintSuccess("健康检查通过")
 	}
 
 	return nil

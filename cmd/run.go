@@ -38,11 +38,10 @@ var runCmd = &cobra.Command{
 			totalSteps = 3
 		}
 
-		fmt.Printf("\n  %s\n",
-			internal.BoldStyle.Render(fmt.Sprintf(
-				"🚀 ship run  version=%s  profiles=%s",
-				ver, strings.Join(profileNames, ", "),
-			)))
+		internal.PrintBanner(fmt.Sprintf(
+			"ship run  version=%s  profiles=%s",
+			ver, strings.Join(profileNames, ", "),
+		))
 
 		internal.ProgressInit(totalSteps)
 
@@ -83,7 +82,7 @@ var runCmd = &cobra.Command{
 			fmt.Printf("  %s 已跳过远程部署\n", internal.WarnStyle.Render("⏭"))
 		}
 
-		fmt.Printf("\n  %s\n", internal.SuccessTagStyle.Render("✔ 所有任务已完成"))
+		internal.PrintSuccess("所有任务已完成")
 		return nil
 	},
 }

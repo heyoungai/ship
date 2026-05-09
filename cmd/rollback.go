@@ -45,6 +45,14 @@ func doRollback() error {
 	fmt.Printf("  %s 回滚到版本: %s\n",
 		internal.WarnStyle.Render("▸"),
 		internal.BoldStyle.Render(targetVersion))
+	confirmed, err := confirmAction(fmt.Sprintf("确认回滚到 %s 吗？", targetVersion))
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		internal.PrintWarning("已取消回滚")
+		return nil
+	}
 
 	// 2. 执行部署
 	if err := doDeploy(targetVersion); err != nil {
@@ -55,6 +63,6 @@ func doRollback() error {
 	if err := recordDeploymentResult(nil, targetVersion, "rollback", "success", ""); err != nil {
 		return err
 	}
-	fmt.Printf("  %s 回滚完成\n", internal.SuccessStyle.Render("✔"))
+	internal.PrintSuccess("回滚完成")
 	return nil
 }

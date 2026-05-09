@@ -31,8 +31,15 @@ func doInit() error {
 
 	// 检查是否已存在
 	if _, err := os.Stat(configFile); err == nil && !initForce {
-		fmt.Printf("  %s ship.toml 已存在，使用 --force 覆盖\n", internal.WarnStyle.Render("▸"))
-		return nil
+		confirmed, confirmErr := confirmAction("检测到已有 ship.toml，是否覆盖？")
+		if confirmErr != nil {
+			internal.PrintWarning("ship.toml 已存在，使用 --force 或 --yes 覆盖")
+			return nil
+		}
+		if !confirmed {
+			internal.PrintWarning("已取消初始化")
+			return nil
+		}
 	}
 
 	// 自动探测项目信息
@@ -45,18 +52,14 @@ func doInit() error {
 	if err := os.WriteFile(configFile, []byte(content), 0644); err != nil {
 		return fmt.Errorf("写入 ship.toml 失败: %w", err)
 	}
-	fmt.Printf("  %s 已生成 ship.toml\n", internal.SuccessStyle.Render("✔"))
+	internal.PrintSuccess("已生成 ship.toml")
 
 	// 将 .ship/ 加入 .gitignore
 	ensureGitignore()
 
-	fmt.Printf("\n  %s\n", internal.DimStyle.Render("请检查并修改以下探测结果："))
-	for k, v := range info {
-		if v != "" {
-			fmt.Printf("    %-15s %s\n", k+":", v)
-		}
-	}
-	fmt.Printf("\n  %s\n", internal.DimStyle.Render("ship.toml 可继续手动编辑，参考 config.example.toml"))
+	internal.PrintInfo("请检查并修改以下探测结果：")
+	internal.PrintKeyValueTable(info)
+	internal.PrintInfo("ship.toml 可继续手动编辑，参考 config.example.toml")
 	return nil
 }
 
@@ -167,7 +170,7 @@ func ensureGitignore() {
 	_, _ = f.WriteString("\n# ship 部署历史（本机记录，不提交）\n")
 	_, _ = f.WriteString(entry + "\n")
 
-	fmt.Printf("  %s 已将 %s 添加到 .gitignore\n", internal.SuccessStyle.Render("✔"), entry)
+	internal.PrintSuccess(fmt.Sprintf("已将 %s 添加到 .gitignore", entry))
 }
 
 // generateConfig 根据探测信息生成 ship.toml 内容

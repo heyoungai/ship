@@ -188,7 +188,7 @@ func TestGetPreviousGitTag_CurrentMissing(t *testing.T) {
 
 func TestFormatHistory_Empty(t *testing.T) {
 	got := FormatHistory(nil, 10)
-	if got != "  暂无部署记录" {
+	if got != "暂无部署记录" {
 		t.Errorf("FormatHistory(empty) = %q", got)
 	}
 }

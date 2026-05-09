@@ -1,22 +1,34 @@
 package internal
 
-import "github.com/charmbracelet/lipgloss"
+import "github.com/pterm/pterm"
 
-// 终端输出样式
+type renderStyle struct {
+	style *pterm.Style
+}
+
+func newRenderStyle(colors ...pterm.Color) renderStyle {
+	return renderStyle{style: pterm.NewStyle(colors...)}
+}
+
+func (s renderStyle) Render(text string) string {
+	return s.style.Sprint(text)
+}
+
+// 终端输出样式。保留这一层只是为了让命令层少改代码，
+// 底层实现已经切到 PTerm，避免继续依赖旧的手写/旧版 Charm 样式链。
 var (
-	SuccessStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))  // 绿色
-	ErrorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))   // 红色
-	InfoStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))  // 青色
-	WarnStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))  // 黄色
-	StepStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))  // 蓝色
-	DimStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("245")) // 灰色
-	SpinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))  // 蓝色
-	BoldStyle    = lipgloss.NewStyle().Bold(true)
+	SuccessStyle = newRenderStyle(pterm.FgLightGreen)
+	ErrorStyle   = newRenderStyle(pterm.FgLightRed)
+	InfoStyle    = newRenderStyle(pterm.FgLightCyan)
+	WarnStyle    = newRenderStyle(pterm.FgYellow)
+	StepStyle    = newRenderStyle(pterm.FgLightBlue)
+	DimStyle     = newRenderStyle(pterm.FgGray)
+	SpinnerStyle = newRenderStyle(pterm.FgLightBlue)
+	BoldStyle    = newRenderStyle(pterm.Bold)
 
-	// 新增样式
-	HeaderStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Bold(true) // 蓝色粗体，section header
-	StepNumStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))           // 灰色，步骤编号
-	SuccessTagStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Bold(true) // 绿色粗体，成功标签
-	ErrorTagStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)  // 红色粗体，错误标签
-	TableHeaderStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true) // 青色粗体，表头
+	HeaderStyle      = newRenderStyle(pterm.FgLightBlue, pterm.Bold)
+	StepNumStyle     = newRenderStyle(pterm.FgGray)
+	SuccessTagStyle  = newRenderStyle(pterm.FgLightGreen, pterm.Bold)
+	ErrorTagStyle    = newRenderStyle(pterm.FgLightRed, pterm.Bold)
+	TableHeaderStyle = newRenderStyle(pterm.FgLightCyan, pterm.Bold)
 )
