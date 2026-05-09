@@ -39,15 +39,19 @@ func init() {
 func doPush(version string, profile internal.Profile) error {
 	remoteTag := internal.ImageTag(version, profile)
 	name := internal.FormatProfileName(profile)
+	nameLabel := ""
+	if name != "" {
+		nameLabel = " " + internal.BoldStyle.Render("["+name+"]")
+	}
 
 	for _, target := range cfg.RegistryTargets(remoteTag) {
-		fmt.Printf("  %s %s  → %s\n",
+		fmt.Printf("  %s%s  → %s\n",
 			internal.StepStyle.Render("▸"),
-			internal.BoldStyle.Render("["+name+"]"),
+			nameLabel,
 			target)
 		if err := internal.RunCmd(
 			[]string{"docker", "push", target},
-			fmt.Sprintf("推送 [%s]", name),
+			fmt.Sprintf("推送%s", nameLabel),
 		); err != nil {
 			return err
 		}
@@ -57,13 +61,13 @@ func doPush(version string, profile internal.Profile) error {
 	// 默认 profile 额外推送 :latest
 	if profile.Default {
 		for _, target := range cfg.RegistryTargets("latest") {
-			fmt.Printf("  %s %s  %s\n",
+			fmt.Printf("  %s%s  %s\n",
 				internal.StepStyle.Render("▸"),
-				internal.BoldStyle.Render("["+name+"]"),
+				nameLabel,
 				internal.DimStyle.Render("→ latest"))
 			if err := internal.RunCmd(
 				[]string{"docker", "push", target},
-				fmt.Sprintf("推送 latest [%s]", name),
+				fmt.Sprintf("推送 latest%s", nameLabel),
 			); err != nil {
 				return err
 			}

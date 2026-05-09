@@ -132,8 +132,8 @@ func TestEnvToSlice(t *testing.T) {
 
 func TestFormatProfileName_Default(t *testing.T) {
 	got := FormatProfileName(Profile{Name: "", Default: true})
-	if got != "(default)" {
-		t.Errorf("FormatProfileName(default) = %q, want %q", got, "(default)")
+	if got != "" {
+		t.Errorf("FormatProfileName(default) = %q, want %q", got, "")
 	}
 }
 

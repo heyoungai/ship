@@ -34,6 +34,10 @@ func doBuild(profile internal.Profile, envFile string) error {
 	}
 
 	name := internal.FormatProfileName(profile)
+ nameLabel := ""
+	if name != "" {
+		nameLabel = " " + internal.BoldStyle.Render("["+name+"]")
+	}
 
 	// 1. 可选：本地构建（如 Next.js）
 	localBuild := cfg.Build.LocalBuild
@@ -41,7 +45,7 @@ func doBuild(profile internal.Profile, envFile string) error {
 		localBuild = internal.DetectLocalBuild()
 	}
 	if localBuild != "" {
-		fmt.Printf("  %s 本地构建 %s\n", internal.StepStyle.Render("▸"), internal.BoldStyle.Render("["+name+"]"))
+		fmt.Printf("  %s 本地构建%s\n", internal.StepStyle.Render("▸"), nameLabel)
 
 		// 加载 .env + profile env
 		buildArgs := internal.LoadBuildArgs(envFile)
@@ -58,7 +62,7 @@ func doBuild(profile internal.Profile, envFile string) error {
 
 		if err := internal.RunCmdWithEnv(
 			[]string{"sh", "-c", localBuild},
-			fmt.Sprintf("本地构建 [%s]", name),
+			fmt.Sprintf("本地构建%s", nameLabel),
 			envMap,
 		); err != nil {
 			return err
@@ -68,9 +72,9 @@ func doBuild(profile internal.Profile, envFile string) error {
 	// 2. Docker buildx build
 	buildArgs := internal.LoadBuildArgs(envFile)
 	argCount := len(buildArgs) / 2
-	fmt.Printf("  %s 构建镜像 %s  %s\n",
+	fmt.Printf("  %s 构建镜像%s  %s\n",
 		internal.StepStyle.Render("▸"),
-		internal.BoldStyle.Render("["+name+"]"),
+		nameLabel,
 		internal.DimStyle.Render(fmt.Sprintf("(%d build-args)", argCount)))
 
 	tag := internal.ImageTag("latest", profile)
@@ -88,7 +92,7 @@ func doBuild(profile internal.Profile, envFile string) error {
 
 	args = append(args, "--tag", cfg.ImageRef(tag), ".")
 
-	if err := internal.RunCmd(args, fmt.Sprintf("构建 [%s]", name)); err != nil {
+	if err := internal.RunCmd(args, fmt.Sprintf("构建%s", nameLabel)); err != nil {
 		return err
 	}
 

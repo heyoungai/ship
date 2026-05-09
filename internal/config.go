@@ -246,10 +246,8 @@ func EnvToSlice(envMap map[string]string) []string {
 }
 
 // FormatProfileName 格式化 profile 名称用于显示
+// 无 matrix 时返回空字符串，有 matrix 时返回 profile 名
 func FormatProfileName(p Profile) string {
-	if p.Name == "" {
-		return "(default)"
-	}
 	return p.Name
 }
 
