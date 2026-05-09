@@ -1,5 +1,7 @@
 # ship
 
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
 Docker 镜像构建、推送和远程部署 CLI 工具。Go 实现，编译为单二进制，无运行时依赖。
 
 支持 `ship.toml` 配置文件和矩阵构建（多品牌/多变体）。命令层基于 **Cobra**，输出层使用 **PTerm**，交互确认使用 **Huh**。
