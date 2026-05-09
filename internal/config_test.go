@@ -322,26 +322,35 @@ func TestLoadBuildArgs_ValidFile(t *testing.T) {
 
 func TestValidate_MissingFields(t *testing.T) {
 	cfg := &Config{}
+	cfg.applyDefaults()
+	cfg.Schema = 2
+	cfg.Features.Deploy = false
+	cfg.Features.Verify = false
+	cfg.normalize()
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("Validate should fail when required fields are missing")
 	}
-	if !strings.Contains(err.Error(), "image_name") || !strings.Contains(err.Error(), "registries") {
+	if !strings.Contains(err.Error(), "build.docker.image") || !strings.Contains(err.Error(), "publish.registry.targets") {
 		t.Fatalf("Validate error should mention missing fields, got: %v", err)
 	}
 }
 
 func TestValidate_MultipleDefaultProfiles(t *testing.T) {
-	cfg := &Config{
-		ImageName: "home",
-		Registries: []Registry{
-			{Type: "dockerhub", Namespace: "deali", Image: "home"},
-		},
-		Matrix: []Profile{
-			{Name: "a", Default: true},
-			{Name: "b", Default: true},
-		},
+	cfg := &Config{}
+	cfg.applyDefaults()
+	cfg.Schema = 2
+	cfg.Build.Docker.Image = "home"
+	cfg.Publish.Registry.Targets = []Registry{
+		{Type: "dockerhub", Namespace: "deali", Image: "home"},
 	}
+	cfg.Features.Deploy = false
+	cfg.Features.Verify = false
+	cfg.Matrix = []Profile{
+		{Name: "a", Default: true},
+		{Name: "b", Default: true},
+	}
+	cfg.normalize()
 	err := cfg.Validate()
 	if err == nil {
 		t.Fatal("Validate should reject multiple default profiles")
@@ -349,12 +358,16 @@ func TestValidate_MultipleDefaultProfiles(t *testing.T) {
 }
 
 func TestValidate_Success(t *testing.T) {
-	cfg := &Config{
-		ImageName: "home",
-		Registries: []Registry{
-			{Type: "dockerhub", Namespace: "deali", Image: "home"},
-		},
+	cfg := &Config{}
+	cfg.applyDefaults()
+	cfg.Schema = 2
+	cfg.Build.Docker.Image = "home"
+	cfg.Publish.Registry.Targets = []Registry{
+		{Type: "dockerhub", Namespace: "deali", Image: "home"},
 	}
+	cfg.Features.Deploy = false
+	cfg.Features.Verify = false
+	cfg.normalize()
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate returned error: %v", err)
 	}
@@ -489,6 +502,21 @@ remote_install_path = "/usr/local/bin"
 		}
 		if cfg.Deploy.Driver != "binary-install" {
 			t.Fatalf("cfg.Deploy.Driver = %q, want binary-install", cfg.Deploy.Driver)
+		}
+		if cfg.Publish.SCP.Local != "./build/swag-cli" {
+			t.Fatalf("cfg.Publish.SCP.Local = %q, want ./build/swag-cli", cfg.Publish.SCP.Local)
+		}
+		if cfg.Deploy.BinaryInstall.RemoteTempPath != "/tmp/swag-cli" {
+			t.Fatalf("cfg.Deploy.BinaryInstall.RemoteTempPath = %q, want /tmp/swag-cli", cfg.Deploy.BinaryInstall.RemoteTempPath)
+		}
+		if cfg.Deploy.BinaryInstall.Chmod != "+x" {
+			t.Fatalf("cfg.Deploy.BinaryInstall.Chmod = %q, want +x", cfg.Deploy.BinaryInstall.Chmod)
+		}
+		if cfg.UsesTagStage() {
+			t.Fatal("cfg.UsesTagStage() should be false for go-binary/scp")
+		}
+		if !cfg.UsesPublishStage() || !cfg.UsesDeployStage() {
+			t.Fatal("go-binary/scp/binary-install should enable publish and deploy stages")
 		}
 	})
 }

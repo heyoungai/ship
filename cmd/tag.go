@@ -14,7 +14,7 @@ var (
 
 var tagCmd = &cobra.Command{
 	Use:   "tag",
-	Short: "给镜像打 tag",
+	Short: "给镜像打 tag（仅 Docker/registry）",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ver, err := internal.ResolveVersion(tagVersion)
 		if err != nil {
@@ -40,6 +40,11 @@ func init() {
 
 // doTag 给单个 profile 的镜像打 tag
 func doTag(version string, profile internal.Profile) error {
+	if !cfg.UsesTagStage() {
+		internal.PrintInfo("当前配置不需要独立 tag 阶段")
+		return nil
+	}
+
 	localTag := internal.ImageTag("latest", profile)
 	remoteTag := internal.ImageTag(version, profile)
 	name := internal.FormatProfileName(profile)

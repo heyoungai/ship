@@ -14,7 +14,7 @@ var (
 
 var pushCmd = &cobra.Command{
 	Use:   "push",
-	Short: "推送镜像到所有配置的仓库",
+	Short: "发布产物",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ver, err := internal.ResolveVersion(pushVersion)
 		if err != nil {
@@ -38,8 +38,27 @@ func init() {
 	pushCmd.Flags().StringVarP(&pushProfile, "profile", "p", "", "指定 profile 名称 (默认全部)")
 }
 
-// doPush 推送单个 profile 的镜像到所有仓库
+// doPush 按当前 publish.driver 执行单个 profile 的发布。
 func doPush(version string, profile internal.Profile) error {
+	switch cfg.Publish.Driver {
+	case "registry":
+		return doRegistryPush(version, profile)
+	case "scp":
+		return doSCPPush(profile)
+	case "none":
+		internal.PrintInfo("当前配置未启用发布阶段")
+		return nil
+	default:
+		return fmt.Errorf("当前不支持的 publish.driver: %s", cfg.Publish.Driver)
+	}
+}
+
+func doRegistryPush(version string, profile internal.Profile) error {
+	if !cfg.Publish.Registry.Push {
+		internal.PrintInfo("publish.registry.push = false，跳过 docker push")
+		return nil
+	}
+
 	remoteTag := internal.ImageTag(version, profile)
 	name := internal.FormatProfileName(profile)
 	nameLabel := ""
@@ -61,7 +80,7 @@ func doPush(version string, profile internal.Profile) error {
 		}
 	}
 
-	if profile.Default {
+	if profile.Default && cfg.Publish.Registry.TagLatestOnDefaultProfile {
 		for _, target := range cfg.RegistryTargets("latest") {
 			fmt.Printf("  %s Push%s  %s\n",
 				internal.StepStyle.Render("▸"),
@@ -78,4 +97,25 @@ func doPush(version string, profile internal.Profile) error {
 	}
 
 	return nil
+}
+
+func doSCPPush(profile internal.Profile) error {
+	name := internal.FormatProfileName(profile)
+	nameLabel := ""
+	if name != "" {
+		nameLabel = " " + internal.BoldStyle.Render("["+name+"]")
+	}
+
+	local := cfg.Publish.SCP.Local
+	remote := fmt.Sprintf("%s:%s", cfg.Publish.SCP.Host, cfg.Publish.SCP.Remote)
+	fmt.Printf("  %s SCP 上传%s  → %s\n",
+		internal.StepStyle.Render("▸"),
+		nameLabel,
+		remote)
+	internal.ProgressSub(local)
+
+	return internal.RunCmd(
+		[]string{"scp", local, remote},
+		fmt.Sprintf("scp%s -> %s", nameLabel, remote),
+	)
 }

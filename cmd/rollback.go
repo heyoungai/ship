@@ -24,6 +24,10 @@ func init() {
 
 // doRollback 执行回滚操作
 func doRollback() error {
+	if cfg.Deploy.Driver != "compose" {
+		return fmt.Errorf("rollback 当前仅支持 deploy.driver = compose，当前为 %s", cfg.Deploy.Driver)
+	}
+
 	// 1. 确定目标版本
 	var targetVersion string
 	if rollbackVersion != "" {

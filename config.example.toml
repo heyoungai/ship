@@ -3,8 +3,9 @@
 #
 # 注意：
 # 1. 这是下一代配置模型草案，用于指导 ship 后续演进
-# 2. 当前代码并未完整实现本文件中的全部字段与 driver
-# 3. 目标是同时覆盖 Docker 项目、组装型项目、Go 二进制项目
+# 2. 当前代码已支持 docker/registry/compose 与 go-binary/scp/binary-install 主链路
+# 3. steps / templates / verify 的完整执行能力仍在继续补齐
+# 4. 目标是同时覆盖 Docker 项目、组装型项目、Go 二进制项目
 
 schema = 2
 

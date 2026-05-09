@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"ship/internal"
 	"strings"
 
@@ -15,7 +17,7 @@ var (
 
 var buildCmd = &cobra.Command{
 	Use:   "build",
-	Short: "构建 Docker 镜像",
+	Short: "构建产物",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		profiles, err := cfg.GetProfiles(buildProfile)
 		if err != nil {
@@ -37,8 +39,21 @@ func init() {
 	buildCmd.Flags().StringVarP(&buildProfile, "profile", "p", "", "指定 profile 名称 (默认全部)")
 }
 
-// doBuild 执行单个 profile 的 Docker 镜像构建
+// doBuild 按当前 build.driver 执行单个 profile 的构建。
 func doBuild(profile internal.Profile, envFile string) error {
+	switch cfg.Build.Driver {
+	case "docker":
+		return doDockerBuild(profile, envFile)
+	case "go-binary":
+		return doGoBinaryBuild(profile)
+	case "command":
+		return doCommandBuild(profile)
+	default:
+		return fmt.Errorf("当前不支持的 build.driver: %s", cfg.Build.Driver)
+	}
+}
+
+func doDockerBuild(profile internal.Profile, envFile string) error {
 	if envFile == "" {
 		envFile = cfg.Build.EnvFile
 	}
@@ -113,4 +128,73 @@ func doBuild(profile internal.Profile, envFile string) error {
 	}
 
 	return nil
+}
+
+func doGoBinaryBuild(profile internal.Profile) error {
+	name := internal.FormatProfileName(profile)
+	nameLabel := ""
+	if name != "" {
+		nameLabel = " " + internal.BoldStyle.Render("["+name+"]")
+	}
+
+	output := cfg.Build.Go.Output
+	if output == "" {
+		return fmt.Errorf("build.go.output 不能为空")
+	}
+	outputDir := filepath.Dir(output)
+	if outputDir != "" && outputDir != "." {
+		if err := os.MkdirAll(outputDir, 0o755); err != nil {
+			return fmt.Errorf("创建构建目录失败: %w", err)
+		}
+	}
+
+	fmt.Printf("  %s Go 构建%s  %s\n",
+		internal.StepStyle.Render("▸"),
+		nameLabel,
+		internal.DimStyle.Render("go-binary"))
+	internal.ProgressSub(output)
+
+	args := []string{"go", "build"}
+	if len(cfg.Build.Go.Ldflags) > 0 {
+		args = append(args, "-ldflags", strings.Join(cfg.Build.Go.Ldflags, " "))
+	}
+	args = append(args, "-o", output, cfg.Build.Go.Main)
+
+	envMap := internal.MergeEnv(nil, profile.Env)
+	if cfg.Build.Go.GoOS != "" {
+		envMap["GOOS"] = cfg.Build.Go.GoOS
+	}
+	if cfg.Build.Go.GoArch != "" {
+		envMap["GOARCH"] = cfg.Build.Go.GoArch
+	}
+	if cfg.Build.Go.CGOEnabled {
+		envMap["CGO_ENABLED"] = "1"
+	} else {
+		envMap["CGO_ENABLED"] = "0"
+	}
+
+	return internal.RunCmdWithOptions(
+		args,
+		fmt.Sprintf("go build%s -> %s", nameLabel, output),
+		"",
+		envMap,
+	)
+}
+
+func doCommandBuild(profile internal.Profile) error {
+	name := internal.FormatProfileName(profile)
+	nameLabel := ""
+	if name != "" {
+		nameLabel = " " + internal.BoldStyle.Render("["+name+"]")
+	}
+
+	fmt.Printf("  %s 自定义构建%s\n", internal.StepStyle.Render("▸"), nameLabel)
+	internal.ProgressSub(cfg.Build.Command.Run)
+
+	return internal.RunCmdWithOptions(
+		internal.ShellCommandArgs(cfg.Build.Command.Run),
+		fmt.Sprintf("custom build%s", nameLabel),
+		cfg.Build.Command.Cwd,
+		internal.MergeEnv(cfg.Build.Command.Env, profile.Env),
+	)
 }

@@ -9,56 +9,30 @@ import (
 	"strings"
 )
 
-// RunCmd 执行外部命令，实时输出 stdout/stderr，失败时返回错误
-//
-// 输出格式：
-//
-//	$ docker buildx build ...
-//	[执行中] 构建镜像
-//	  (命令输出逐行显示)
-//	[完成]   构建镜像
+// RunCmd 执行外部命令，实时输出 stdout/stderr，失败时返回错误。
 func RunCmd(args []string, label string) error {
-	fmt.Printf("  %s %s\n", DimStyle.Render("$"), DimStyle.Render(strings.Join(args, " ")))
-	fmt.Printf("  %s %s\n", InfoStyle.Render("·"), label)
-
-	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Env = os.Environ()
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("创建 stdout 管道失败: %w", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("创建 stderr 管道失败: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("启动命令失败: %w", err)
-	}
-
-	done := make(chan struct{}, 2)
-	go streamOutput(stdout, done)
-	go streamOutput(stderr, done)
-	<-done
-	<-done
-
-	if err := cmd.Wait(); err != nil {
-		fmt.Printf("  %s %s  %v\n", ErrorStyle.Render("✖"), label, err)
-		return err
-	}
-
-	fmt.Printf("  %s %s\n", SuccessStyle.Render("✔"), label)
-	return nil
+	return runCmd(args, label, "", nil)
 }
 
-// RunCmdWithEnv 执行外部命令，支持注入额外环境变量
+// RunCmdWithEnv 执行外部命令，支持注入额外环境变量。
 func RunCmdWithEnv(args []string, label string, env map[string]string) error {
+	return runCmd(args, label, "", env)
+}
+
+// RunCmdWithOptions 执行外部命令，支持工作目录和额外环境变量。
+func RunCmdWithOptions(args []string, label, cwd string, env map[string]string) error {
+	return runCmd(args, label, cwd, env)
+}
+
+func runCmd(args []string, label, cwd string, env map[string]string) error {
 	fmt.Printf("  %s %s\n", DimStyle.Render("$"), DimStyle.Render(strings.Join(args, " ")))
 	fmt.Printf("  %s %s\n", InfoStyle.Render("·"), label)
 
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Env = os.Environ()
+	if cwd != "" {
+		cmd.Dir = cwd
+	}
 	for k, v := range env {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}

@@ -118,11 +118,11 @@ type BuildCommandConfig struct {
 type BuildConfig struct {
 	Driver string `toml:"driver"`
 
-	// v1 兼容字段
-	Platforms  string `toml:"platforms"`
-	Dockerfile string `toml:"dockerfile"`
-	EnvFile    string `toml:"env_file"`
-	LocalBuild string `toml:"local_build"`
+	// 运行时派生字段，供当前命令层继续复用
+	Platforms  string `toml:"-"`
+	Dockerfile string `toml:"-"`
+	EnvFile    string `toml:"-"`
+	LocalBuild string `toml:"-"`
 
 	// v2 driver 配置
 	Docker  BuildDockerConfig   `toml:"docker"`
@@ -180,10 +180,10 @@ type DeploySSHConfig struct {
 type DeployConfig struct {
 	Driver string `toml:"driver"`
 
-	// v1 兼容字段
-	Enabled bool   `toml:"enabled"`
-	Host    string `toml:"host"`
-	Path    string `toml:"path"`
+	// 运行时派生字段，供当前命令层继续复用
+	Enabled bool   `toml:"-"`
+	Host    string `toml:"-"`
+	Path    string `toml:"-"`
 
 	Healthcheck   DeployHealthcheck         `toml:"healthcheck"`
 	Compose       DeployComposeConfig       `toml:"compose"`
@@ -236,9 +236,10 @@ type Config struct {
 	Deploy  DeployConfig  `toml:"deploy"`
 	Verify  VerifyConfig  `toml:"verify"`
 
-	// v1 兼容字段
-	Registries []Registry `toml:"registries"`
-	Matrix     []Profile  `toml:"matrix"`
+	Matrix []Profile `toml:"matrix"`
+
+	// 运行时派生字段，供当前命令层继续复用
+	Registries []Registry `toml:"-"`
 
 	// 运行时填充，不来自 TOML
 	ImageName string `toml:"-"`
@@ -256,22 +257,23 @@ func LoadConfig(imageName string) (*Config, error) {
 	}
 
 	if v := os.Getenv("PLATFORMS"); v != "" {
-		cfg.Build.Platforms = v
+		cfg.Build.Docker.Platforms = SplitCSV(v)
 	}
 	if v := os.Getenv("DOCKERFILE"); v != "" {
-		cfg.Build.Dockerfile = v
+		cfg.Build.Docker.Dockerfile = v
 	}
 	if v := os.Getenv("IMAGE_NAME"); v != "" {
+		cfg.Build.Docker.Image = v
 		cfg.ImageName = v
 	}
 	if v := os.Getenv("REMOTE_HOST"); v != "" {
-		cfg.Deploy.Host = v
+		cfg.Deploy.Compose.Host = v
 	}
 	if v := os.Getenv("REMOTE_PROJECT_PATH"); v != "" {
-		cfg.Deploy.Path = v
+		cfg.Deploy.Compose.Path = v
 	}
 	if v := os.Getenv("ENV_FILE"); v != "" {
-		cfg.Build.EnvFile = v
+		cfg.Build.Docker.EnvFile = v
 	}
 
 	cfg.normalize()
@@ -282,12 +284,6 @@ func LoadConfig(imageName string) (*Config, error) {
 }
 
 func (c *Config) applyDefaults() {
-	// v1 默认值
-	c.Build.Platforms = "linux/amd64"
-	c.Build.Dockerfile = "./Dockerfile"
-	c.Build.EnvFile = "./.env.local"
-	c.Deploy.Enabled = false
-
 	// v2 默认值
 	c.Version.Source = "git-tag"
 	c.Version.Fallback = "error"
@@ -325,21 +321,8 @@ func (c *Config) applyDefaults() {
 }
 
 func (c *Config) normalize() {
-	if c.Schema <= 0 {
-		c.Schema = 1
-	}
 	c.Deploy.Healthcheck.ApplyDefaults()
-	if c.Schema >= 2 {
-		c.normalizeV2()
-		return
-	}
-	c.normalizeV1()
-}
-
-func (c *Config) normalizeV1() {
-	if c.ImageName == "" && len(c.Registries) > 0 {
-		c.ImageName = c.Registries[0].Image
-	}
+	c.normalizeV2()
 }
 
 func (c *Config) normalizeV2() {
@@ -377,17 +360,10 @@ func (c *Config) normalizeV2() {
 		c.Build.Docker.LocalBuild = c.Build.LocalBuild
 	}
 
-	if len(c.Publish.Registry.Targets) == 0 && len(c.Registries) > 0 {
-		c.Publish.Registry.Targets = append([]Registry(nil), c.Registries...)
-	}
-	if len(c.Registries) == 0 && len(c.Publish.Registry.Targets) > 0 {
-		c.Registries = append([]Registry(nil), c.Publish.Registry.Targets...)
-	}
-
 	switch {
 	case c.Publish.SCP.Local != "" || c.Publish.SCP.Host != "" || c.Publish.SCP.Remote != "":
 		c.Publish.Driver = "scp"
-	case len(c.Publish.Registry.Targets) > 0 || len(c.Registries) > 0:
+	case len(c.Publish.Registry.Targets) > 0:
 		c.Publish.Driver = "registry"
 	case c.Publish.Driver == "":
 		c.Publish.Driver = "none"
@@ -450,13 +426,30 @@ func (c *Config) normalizeV2() {
 	if c.ImageName == "" && len(c.Publish.Registry.Targets) > 0 {
 		c.ImageName = c.Publish.Registry.Targets[0].Image
 	}
-	if c.ImageName == "" && len(c.Registries) > 0 {
-		c.ImageName = c.Registries[0].Image
-	}
 	if c.Build.Driver == "docker" && c.Build.Docker.Image == "" {
 		c.Build.Docker.Image = c.ImageName
 	}
+	if c.Build.Driver == "go-binary" && c.Build.Go.ExecutableName == "" && c.Build.Go.Output != "" {
+		c.Build.Go.ExecutableName = filepath.Base(c.Build.Go.Output)
+	}
 
+	if c.Publish.Driver == "scp" && c.Publish.SCP.Local == "" && c.Build.Driver == "go-binary" {
+		c.Publish.SCP.Local = c.Build.Go.Output
+	}
+	if c.Publish.Driver == "scp" && c.Publish.SCP.Host == "" && c.Deploy.BinaryInstall.Host != "" {
+		c.Publish.SCP.Host = c.Deploy.BinaryInstall.Host
+	}
+	if c.Deploy.Driver == "binary-install" && c.Deploy.BinaryInstall.Host == "" && c.Publish.SCP.Host != "" {
+		c.Deploy.BinaryInstall.Host = c.Publish.SCP.Host
+	}
+	if c.Deploy.Driver == "binary-install" && c.Deploy.BinaryInstall.RemoteTempPath == "" && c.Publish.SCP.Remote != "" {
+		c.Deploy.BinaryInstall.RemoteTempPath = c.Publish.SCP.Remote
+	}
+	if c.Deploy.Driver == "binary-install" && c.Deploy.BinaryInstall.Chmod == "" {
+		c.Deploy.BinaryInstall.Chmod = "+x"
+	}
+
+	c.Registries = append([]Registry(nil), c.Publish.Registry.Targets...)
 	c.Deploy.Enabled = c.Features.Deploy && c.Deploy.Driver != "none"
 }
 
@@ -474,10 +467,10 @@ func (c *Config) Validate() error {
 		missing = append(missing, "matrix.default 只能有一个 profile 为 true")
 	}
 
-	if c.Schema >= 2 {
-		c.validateV2(&missing)
+	if c.Schema != 2 {
+		missing = append(missing, "schema = 2")
 	} else {
-		c.validateV1(&missing)
+		c.validateV2(&missing)
 	}
 
 	if len(missing) > 0 {
@@ -491,23 +484,6 @@ func (c *Config) Validate() error {
 		return errors.New(b.String())
 	}
 	return nil
-}
-
-func (c *Config) validateV1(missing *[]string) {
-	if c.ImageName == "" {
-		*missing = append(*missing, "image_name (环境变量 IMAGE_NAME 或 ship.toml registries[].image)")
-	}
-	if c.Deploy.Enabled {
-		if c.Deploy.Host == "" {
-			*missing = append(*missing, "deploy.host (环境变量 REMOTE_HOST 或 ship.toml [deploy].host)")
-		}
-		if c.Deploy.Path == "" {
-			*missing = append(*missing, "deploy.path (环境变量 REMOTE_PROJECT_PATH 或 ship.toml [deploy].path)")
-		}
-	}
-	if len(c.Registries) == 0 {
-		*missing = append(*missing, "registries (ship.toml [[registries]])")
-	}
 }
 
 func (c *Config) validateV2(missing *[]string) {
@@ -581,6 +557,9 @@ func (c *Config) validateV2(missing *[]string) {
 		case "binary-install":
 			if c.Deploy.BinaryInstall.Host == "" {
 				*missing = append(*missing, "deploy.binary_install.host")
+			}
+			if c.Deploy.BinaryInstall.RemoteTempPath == "" {
+				*missing = append(*missing, "deploy.binary_install.remote_temp_path")
 			}
 			if c.Deploy.BinaryInstall.RemoteInstallPath == "" {
 				*missing = append(*missing, "deploy.binary_install.remote_install_path")
@@ -747,6 +726,21 @@ func EnvToSlice(envMap map[string]string) []string {
 // 无 matrix 时返回空字符串，有 matrix 时返回 profile 名。
 func FormatProfileName(p Profile) string {
 	return p.Name
+}
+
+// UsesTagStage 返回当前配置是否需要独立 tag 阶段。
+func (c *Config) UsesTagStage() bool {
+	return c.Build.Driver == "docker" && c.Features.Publish && c.Publish.Driver == "registry"
+}
+
+// UsesPublishStage 返回当前配置是否需要发布阶段。
+func (c *Config) UsesPublishStage() bool {
+	return c.Features.Publish && c.Publish.Driver != "none"
+}
+
+// UsesDeployStage 返回当前配置是否需要部署阶段。
+func (c *Config) UsesDeployStage() bool {
+	return c.Features.Deploy && c.Deploy.Driver != "none"
 }
 
 // StringSliceContains 检查字符串切片是否包含指定元素。

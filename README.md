@@ -4,9 +4,14 @@
 
 Docker 镜像构建、推送和远程部署 CLI 工具。Go 实现，编译为单二进制，无运行时依赖。
 
-支持 `ship.toml` 配置文件和矩阵构建（多品牌/多变体）。命令层基于 **Cobra**，输出层使用 **PTerm**，交互确认使用 **Huh**。
+仅支持 **`ship.toml` v2 schema**，支持矩阵构建（多品牌/多变体）。命令层基于 **Cobra**，输出层使用 **PTerm**，交互确认使用 **Huh**。
 
-当前 `build → tag → push` 分阶段流程会将 `docker buildx` 产物 `--load` 回本地 Docker，再继续后续步骤，因此 **`build.platforms` 目前应保持单平台**（如 `linux/amd64`）。
+当前命令层已跑通两条主路径：
+
+- **Docker 发布链路**：`build.driver = "docker"` → `publish.driver = "registry"` → `deploy.driver = "compose"`
+- **Go 二进制链路**：`build.driver = "go-binary"` → `publish.driver = "scp"` → `deploy.driver = "binary-install"`
+
+其中 Docker 的 `build → tag → push` 分阶段流程会将 `docker buildx` 产物 `--load` 回本地 Docker，再继续后续步骤，因此 **`build.docker.platforms` 目前应保持单平台**（如 `linux/amd64`）。
 
 ## 快速开始
 
@@ -76,7 +81,7 @@ task build
 
 ## 配置
 
-在项目根目录运行 `ship init` 自动生成 `ship.toml`，或参考 `config.example.toml` 手动创建。
+在项目根目录运行 `ship init` 自动生成 `ship.toml`，或参考 `config.example.toml` 手动创建。当前只接受 `schema = 2`。
 
 ### 配置优先级
 
@@ -86,28 +91,49 @@ task build
 
 ### 必填字段
 
-以下字段缺失时会报错（一次性列出所有缺失项）：
+以下字段缺失或非法时会报错（一次性列出所有缺失项）：
 
-- `image_name` — 从第一个 registry 的 image 自动推导，或通过 `IMAGE_NAME` 环境变量设置
-- `registries` — 至少配置一个镜像仓库
-- `deploy.host` / `deploy.path` — 仅在 `deploy.enabled = true` 时必填
+- `schema = 2`
+- `build.driver`
+- `publish.driver`
+- `build.docker.image` — 当 `build.driver = "docker"` 时必填
+- `publish.registry.targets` — 当 `publish.driver = "registry"` 时至少配置一个目标仓库
+- `deploy.compose.host` / `deploy.compose.path` — 当 `features.deploy = true` 且 `deploy.driver = "compose"` 时必填
 
 ### 简单项目（无矩阵）
 
 ```toml
+schema = 2
+
+[project]
+name = "home"
+
+[features]
+deploy = true
+verify = true
+
 [build]
-platforms = "linux/amd64"
+driver = "docker"
+
+[build.docker]
+image = "home"
+platforms = ["linux/amd64"]
 dockerfile = "./Dockerfile"
 env_file = "./.env.local"
 
-[[registries]]
+[publish]
+driver = "registry"
+
+[[publish.registry.targets]]
 type = "private"
 url = "registry.cn-hangzhou.aliyuncs.com"
 namespace = "deali"
 image = "home"
 
 [deploy]
-enabled = true
+driver = "compose"
+
+[deploy.compose]
 host = "deali.cn"
 path = "/home/deali/projects/home"
 
@@ -122,19 +148,32 @@ timeout_seconds = 5
 ### 多品牌项目（矩阵构建）
 
 ```toml
+schema = 2
+
+[project]
+name = "canvas-studio"
+
+[features]
+deploy = false
+verify = false
+
 [build]
-platforms = "linux/amd64"
+driver = "docker"
+
+[build.docker]
+image = "canvas-studio"
+platforms = ["linux/amd64"]
 dockerfile = "./Dockerfile"
 env_file = "./.env"
 
-[[registries]]
+[publish]
+driver = "registry"
+
+[[publish.registry.targets]]
 type = "private"
 url = "ccr.ccs.tencentyun.com"
 namespace = "deali"
 image = "canvas-studio"
-
-[deploy]
-enabled = false
 
 [[matrix]]
 name = "brand-a"
@@ -165,12 +204,12 @@ env = { NEXT_PUBLIC_APP_BRAND = "brand-b" }
 
 | 变量 | 说明 |
 |------|------|
-| `IMAGE_NAME` | 镜像名称（覆盖 ship.toml） |
-| `PLATFORMS` | 构建目标平台 |
-| `DOCKERFILE` | Dockerfile 路径 |
-| `ENV_FILE` | .env 文件路径 |
-| `REMOTE_HOST` | SSH Host |
-| `REMOTE_PROJECT_PATH` | 远程项目路径 |
+| `IMAGE_NAME` | 覆盖 `build.docker.image` |
+| `PLATFORMS` | 覆盖 `build.docker.platforms` |
+| `DOCKERFILE` | 覆盖 `build.docker.dockerfile` |
+| `ENV_FILE` | 覆盖 `build.docker.env_file` |
+| `REMOTE_HOST` | 覆盖 `deploy.compose.host` |
+| `REMOTE_PROJECT_PATH` | 覆盖 `deploy.compose.path` |
 
 ## 设计说明
 
@@ -178,6 +217,7 @@ env = { NEXT_PUBLIC_APP_BRAND = "brand-b" }
 - `local_build` 会按平台选择 shell：Windows 使用 PowerShell，Linux/macOS 使用 `sh`
 - 历史记录写入与配置校验不再静默失败，错误会直接向上返回
 - 阶段输出、历史表格和提示已切到 PTerm，避免继续维护手写进度输出
+- 配置解析层已收敛为 **v2-only**，不再接受旧版 `registries / deploy.enabled / build.platforms` 写法
 
 ## 开发
 
