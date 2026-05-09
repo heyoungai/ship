@@ -53,7 +53,7 @@ func doTag(version string, profile internal.Profile) error {
 			cfg.ImageRef(localTag), target)
 		if err := internal.RunCmd(
 			[]string{"docker", "tag", cfg.ImageRef(localTag), target},
-			fmt.Sprintf("打 tag%s", nameLabel),
+			fmt.Sprintf("docker tag → %s", target),
 		); err != nil {
 			return err
 		}
@@ -69,7 +69,7 @@ func doTag(version string, profile internal.Profile) error {
 				internal.DimStyle.Render("→ latest"))
 			if err := internal.RunCmd(
 				[]string{"docker", "tag", cfg.ImageRef(localTag), target},
-				fmt.Sprintf("打 latest tag%s", nameLabel),
+				fmt.Sprintf("docker tag → %s", target),
 			); err != nil {
 				return err
 			}

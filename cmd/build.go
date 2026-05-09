@@ -62,7 +62,7 @@ func doBuild(profile internal.Profile, envFile string) error {
 
 		if err := internal.RunCmdWithEnv(
 			[]string{"sh", "-c", localBuild},
-			fmt.Sprintf("本地构建%s", nameLabel),
+			fmt.Sprintf("执行 %s", localBuild),
 			envMap,
 		); err != nil {
 			return err
@@ -92,7 +92,7 @@ func doBuild(profile internal.Profile, envFile string) error {
 
 	args = append(args, "--tag", cfg.ImageRef(tag), ".")
 
-	if err := internal.RunCmd(args, fmt.Sprintf("构建%s", nameLabel)); err != nil {
+	if err := internal.RunCmd(args, "docker buildx build"); err != nil {
 		return err
 	}
 

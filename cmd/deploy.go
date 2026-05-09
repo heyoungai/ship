@@ -42,7 +42,7 @@ func doDeploy(version string) error {
 	)
 	if err := internal.RunCmd(
 		[]string{"ssh", cfg.Deploy.Host, sedCmd},
-		"更新远程 .env",
+		fmt.Sprintf("ssh %s: 更新 .env", cfg.Deploy.Host),
 	); err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func doDeploy(version string) error {
 	restartCmd := fmt.Sprintf("cd %s && docker compose up -d", cfg.Deploy.Path)
 	if err := internal.RunCmd(
 		[]string{"ssh", cfg.Deploy.Host, restartCmd},
-		"重启远程容器",
+		fmt.Sprintf("ssh %s: docker compose up", cfg.Deploy.Host),
 	); err != nil {
 		return err
 	}

@@ -51,7 +51,7 @@ func doPush(version string, profile internal.Profile) error {
 			target)
 		if err := internal.RunCmd(
 			[]string{"docker", "push", target},
-			fmt.Sprintf("推送%s", nameLabel),
+			fmt.Sprintf("docker push → %s", target),
 		); err != nil {
 			return err
 		}
@@ -67,7 +67,7 @@ func doPush(version string, profile internal.Profile) error {
 				internal.DimStyle.Render("→ latest"))
 			if err := internal.RunCmd(
 				[]string{"docker", "push", target},
-				fmt.Sprintf("推送 latest%s", nameLabel),
+				fmt.Sprintf("docker push → %s", target),
 			); err != nil {
 				return err
 			}
