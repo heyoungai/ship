@@ -1,0 +1,43 @@
+version: "3"
+
+vars:
+  BINARY: ship.exe
+  VERSION: dev
+
+tasks:
+  build:
+    desc: 编译 ship 二进制
+    cmds:
+      - go build -ldflags "-X ship/cmd.Version={{.VERSION}}" -o {{.BINARY}} .
+
+  test:
+    desc: 运行所有测试
+    cmds:
+      - go test ./... -v
+
+  cover:
+    desc: 运行测试并查看覆盖率
+    cmds:
+      - go test ./... -cover -coverprofile=coverage.out
+      - go tool cover -func=coverage.out
+      - cmd: del coverage.out
+        platforms: [windows]
+      - cmd: rm -f coverage.out
+        platforms: [linux, darwin]
+
+  clean:
+    desc: 清理构建产物
+    cmds:
+      - cmd: del /f {{.BINARY}} coverage.out 2>nul
+        platforms: [windows]
+      - cmd: rm -f {{.BINARY}} coverage.out
+        platforms: [linux, darwin]
+
+  install:
+    desc: 编译并安装到 GOPATH/bin
+    cmds:
+      - task: build
+      - cmd: copy {{.BINARY}} "%GOPATH%\bin\{{.BINARY}}"
+        platforms: [windows]
+      - cmd: cp {{.BINARY}} "$GOPATH/bin/ship"
+        platforms: [linux, darwin]
