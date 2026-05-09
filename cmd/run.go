@@ -31,19 +31,26 @@ var runCmd = &cobra.Command{
 		profileNames := make([]string, len(profiles))
 		for i, p := range profiles {
 			profileNames[i] = internal.FormatProfileName(p)
+			if profileNames[i] == "" {
+				profileNames[i] = "default"
+			}
 		}
 
 		totalSteps := 4
 		if runSkipDeploy || !cfg.Deploy.Enabled {
 			totalSteps = 3
 		}
+		steps := []string{"构建镜像", "打 Tag", "推送镜像"}
+		if !runSkipDeploy && cfg.Deploy.Enabled {
+			steps = append(steps, "远程部署")
+		}
 
 		internal.PrintBanner(fmt.Sprintf(
 			"ship run  version=%s  profiles=%s",
 			ver, strings.Join(profileNames, ", "),
 		))
-
-		internal.ProgressInit(totalSteps)
+		internal.SetProgressTotal(totalSteps)
+		internal.PrintRunPlan(ver, profileNames, runEnvFile, !runSkipDeploy && cfg.Deploy.Enabled, steps)
 
 		// 1. Build
 		internal.ProgressStep(1, "构建镜像")
@@ -79,7 +86,7 @@ var runCmd = &cobra.Command{
 				return err
 			}
 		} else if runSkipDeploy {
-			fmt.Printf("  %s 已跳过远程部署\n", internal.WarnStyle.Render("⏭"))
+			internal.PrintWarning("已跳过远程部署")
 		}
 
 		internal.PrintSuccess("所有任务已完成")
