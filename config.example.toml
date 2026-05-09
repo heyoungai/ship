@@ -3,7 +3,7 @@
 
 # ── 构建设置 ────────────────────────────────────────────────
 [build]
-platforms = "linux/amd64"           # 目标平台
+platforms = "linux/amd64"           # 目标平台；当前分阶段流程会把镜像 load 回本地，因此应保持单平台
 dockerfile = "./Dockerfile"         # Dockerfile 路径
 env_file = "./.env.local"           # .env 文件路径，用于注入 build-args
 
@@ -29,6 +29,14 @@ image = "home"
 enabled = true
 host = "deali.cn"                   # SSH Host（~/.ssh/config 别名或 user@ip）
 path = "/home/deali/projects/home"  # 远程项目路径
+
+# 可选：部署后健康检查。配置后 ship 会等待服务真正可用，再把本次部署视为成功。
+#[deploy.healthcheck]
+#url = "https://deali.cn/api/health"
+#expected_status = 200
+#attempts = 20
+#interval_seconds = 3
+#timeout_seconds = 5
 
 # ── 矩阵构建（可选）────────────────────────────────────────
 # 用于多品牌/多变体场景，如 canvas-studio 的多品牌构建

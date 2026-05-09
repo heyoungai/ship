@@ -24,22 +24,28 @@ type HistoryEntry struct {
 	Note    string `json:"note,omitempty"`
 }
 
-// LoadHistory 读取部署历史记录
-func LoadHistory() []HistoryEntry {
+// LoadHistory 读取部署历史记录。
+func LoadHistory() ([]HistoryEntry, error) {
 	data, err := os.ReadFile(historyFile)
 	if err != nil {
-		return nil
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("读取部署历史失败: %w", err)
 	}
 	var entries []HistoryEntry
 	if err := json.Unmarshal(data, &entries); err != nil {
-		return nil
+		return nil, fmt.Errorf("解析部署历史失败: %w", err)
 	}
-	return entries
+	return entries, nil
 }
 
 // RecordDeployment 记录一次部署操作到历史
-func RecordDeployment(version, action, result, note string) {
-	entries := LoadHistory()
+func RecordDeployment(version, action, result, note string) error {
+	entries, err := LoadHistory()
+	if err != nil {
+		return err
+	}
 	entries = append(entries, HistoryEntry{
 		Version: version,
 		Time:    time.Now().Format("2006-01-02 15:04:05"),
@@ -53,15 +59,26 @@ func RecordDeployment(version, action, result, note string) {
 		entries = entries[len(entries)-100:]
 	}
 
-	_ = os.MkdirAll(historyDir, 0755)
-	data, _ := json.MarshalIndent(entries, "", "  ")
-	_ = os.WriteFile(historyFile, data, 0644)
+	if err := os.MkdirAll(historyDir, 0755); err != nil {
+		return fmt.Errorf("创建历史目录失败: %w", err)
+	}
+	data, err := json.MarshalIndent(entries, "", "  ")
+	if err != nil {
+		return fmt.Errorf("序列化部署历史失败: %w", err)
+	}
+	if err := os.WriteFile(historyFile, data, 0644); err != nil {
+		return fmt.Errorf("写入部署历史失败: %w", err)
+	}
+	return nil
 }
 
 // GetPreviousVersion 获取可回滚的上一个版本
 // 优先从历史记录找，找不到则从 git tag 推断
 func GetPreviousVersion(currentVersion string) (string, error) {
-	entries := LoadHistory()
+	entries, err := LoadHistory()
+	if err != nil {
+		return "", err
+	}
 
 	// 从后往前找第一个成功部署且不是当前版本的记录
 	for i := len(entries) - 1; i >= 0; i-- {
@@ -80,18 +97,20 @@ func getPreviousGitTag(current string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("获取 git tag 列表失败: %w", err)
 	}
+	if len(tags) == 0 {
+		return "", fmt.Errorf("没有可回滚的版本")
+	}
 
 	for i, tag := range tags {
 		if tag == current && i+1 < len(tags) {
 			return tags[i+1], nil
 		}
+		if tag == current {
+			return "", fmt.Errorf("当前版本 %s 已是最早的 git tag，无法继续回滚", current)
+		}
 	}
 
-	if len(tags) > 0 {
-		return tags[0], nil
-	}
-
-	return "", fmt.Errorf("没有可回滚的版本")
+	return "", fmt.Errorf("当前版本 %s 不在 git tag 列表中，无法推断回滚版本", current)
 }
 
 // getSortedTags 获取按版本号倒序排列的所有 git tag

@@ -1,11 +1,11 @@
 package cmd
 
 import (
-	"ship/internal"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"ship/internal"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -62,8 +62,8 @@ func doInit() error {
 
 // projectInfo 存储自动探测到的项目信息
 type projectInfo struct {
-	ImageName string
-	LocalBuild string
+	ImageName     string
+	LocalBuild    string
 	HasDockerfile bool
 	HasEnvFile    bool
 	EnvFile       string
@@ -87,7 +87,7 @@ func detectProject() map[string]string {
 	}
 
 	// 3. 检测本地构建命令
-	if cmd := detectLocalBuildCmd(); cmd != "" {
+	if cmd := internal.DetectLocalBuild(); cmd != "" {
 		info["本地构建"] = cmd
 	}
 
@@ -118,21 +118,6 @@ func detectImageFromGitRemote() string {
 	})
 	if len(parts) > 0 {
 		return parts[len(parts)-1]
-	}
-	return ""
-}
-
-// detectLocalBuildCmd 根据锁文件推断构建命令
-func detectLocalBuildCmd() string {
-	for _, pair := range [][2]string{
-		{"bun.lock", "bun run build"},
-		{"yarn.lock", "yarn build"},
-		{"pnpm-lock.yaml", "pnpm run build"},
-		{"package-lock.json", "npm run build"},
-	} {
-		if _, err := os.Stat(pair[0]); err == nil {
-			return pair[1]
-		}
 	}
 	return ""
 }
@@ -208,7 +193,7 @@ func generateConfig(info map[string]string) string {
 	// [build]
 	b.WriteString("# ── 构建设置 ────────────────────────────────────────────────\n")
 	b.WriteString("[build]\n")
-	b.WriteString("platforms = \"linux/amd64\"\n")
+	b.WriteString("platforms = \"linux/amd64\"  # 当前分阶段流程会把镜像 load 回本地，因此这里应保持单平台\n")
 	b.WriteString("dockerfile = \"./Dockerfile\"\n")
 	b.WriteString(fmt.Sprintf("env_file = \"%s\"\n", envFile))
 
@@ -232,6 +217,13 @@ func generateConfig(info map[string]string) string {
 	b.WriteString("enabled = false\n")
 	b.WriteString("host = \"your-server\"                       # SSH Host\n")
 	b.WriteString(fmt.Sprintf("path = \"/home/user/projects/%s\"  # 远程项目路径\n", imageName))
+	b.WriteString("\n")
+	b.WriteString("# [deploy.healthcheck]\n")
+	b.WriteString("# url = \"https://example.com/api/health\"\n")
+	b.WriteString("# expected_status = 200\n")
+	b.WriteString("# attempts = 20\n")
+	b.WriteString("# interval_seconds = 3\n")
+	b.WriteString("# timeout_seconds = 5\n")
 	b.WriteString("\n")
 
 	// [matrix] 注释示例

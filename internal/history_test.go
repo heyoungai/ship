@@ -21,7 +21,10 @@ func withTempHistory(t *testing.T, fn func()) {
 
 func TestLoadHistory_NoFile(t *testing.T) {
 	withTempHistory(t, func() {
-		entries := LoadHistory()
+		entries, err := LoadHistory()
+		if err != nil {
+			t.Fatalf("LoadHistory(no file) error: %v", err)
+		}
 		if entries != nil {
 			t.Errorf("LoadHistory(no file) = %v, want nil", entries)
 		}
@@ -34,7 +37,10 @@ func TestLoadHistory_ValidFile(t *testing.T) {
 		data := `[{"version":"v1.0.0","time":"2026-01-01 00:00:00","action":"deploy","result":"success"}]`
 		os.WriteFile(".ship/history.json", []byte(data), 0644)
 
-		entries := LoadHistory()
+		entries, err := LoadHistory()
+		if err != nil {
+			t.Fatalf("LoadHistory(valid) error: %v", err)
+		}
 		if len(entries) != 1 {
 			t.Fatalf("LoadHistory got %d entries, want 1", len(entries))
 		}
@@ -49,9 +55,9 @@ func TestLoadHistory_InvalidJSON(t *testing.T) {
 		os.MkdirAll(".ship", 0755)
 		os.WriteFile(".ship/history.json", []byte("not json"), 0644)
 
-		entries := LoadHistory()
-		if entries != nil {
-			t.Errorf("LoadHistory(invalid) = %v, want nil", entries)
+		_, err := LoadHistory()
+		if err == nil {
+			t.Fatal("LoadHistory(invalid) should return an error")
 		}
 	})
 }
@@ -60,9 +66,14 @@ func TestLoadHistory_InvalidJSON(t *testing.T) {
 
 func TestRecordDeployment_CreatesFile(t *testing.T) {
 	withTempHistory(t, func() {
-		RecordDeployment("v1.0.0", "deploy", "success", "first deploy")
+		if err := RecordDeployment("v1.0.0", "deploy", "success", "first deploy"); err != nil {
+			t.Fatalf("RecordDeployment error: %v", err)
+		}
 
-		entries := LoadHistory()
+		entries, err := LoadHistory()
+		if err != nil {
+			t.Fatalf("LoadHistory after record error: %v", err)
+		}
 		if len(entries) != 1 {
 			t.Fatalf("RecordDeployment: got %d entries, want 1", len(entries))
 		}
@@ -80,10 +91,17 @@ func TestRecordDeployment_CreatesFile(t *testing.T) {
 
 func TestRecordDeployment_Appends(t *testing.T) {
 	withTempHistory(t, func() {
-		RecordDeployment("v1.0.0", "deploy", "success", "")
-		RecordDeployment("v2.0.0", "deploy", "fail", "timeout")
+		if err := RecordDeployment("v1.0.0", "deploy", "success", ""); err != nil {
+			t.Fatalf("RecordDeployment(first) error: %v", err)
+		}
+		if err := RecordDeployment("v2.0.0", "deploy", "fail", "timeout"); err != nil {
+			t.Fatalf("RecordDeployment(second) error: %v", err)
+		}
 
-		entries := LoadHistory()
+		entries, err := LoadHistory()
+		if err != nil {
+			t.Fatalf("LoadHistory after append error: %v", err)
+		}
 		if len(entries) != 2 {
 			t.Fatalf("got %d entries, want 2", len(entries))
 		}
@@ -97,10 +115,15 @@ func TestRecordDeployment_Retention(t *testing.T) {
 	withTempHistory(t, func() {
 		// 写入 105 条
 		for i := 0; i < 105; i++ {
-			RecordDeployment("v1.0.0", "deploy", "success", "")
+			if err := RecordDeployment("v1.0.0", "deploy", "success", ""); err != nil {
+				t.Fatalf("RecordDeployment(retention) error: %v", err)
+			}
 		}
 
-		entries := LoadHistory()
+		entries, err := LoadHistory()
+		if err != nil {
+			t.Fatalf("LoadHistory(retention) error: %v", err)
+		}
 		if len(entries) != 100 {
 			t.Errorf("retention: got %d entries, want 100", len(entries))
 		}
@@ -111,8 +134,8 @@ func TestRecordDeployment_Retention(t *testing.T) {
 
 func TestGetPreviousVersion_FromHistory(t *testing.T) {
 	withTempHistory(t, func() {
-		RecordDeployment("v1.0.0", "deploy", "success", "")
-		RecordDeployment("v2.0.0", "deploy", "success", "")
+		_ = RecordDeployment("v1.0.0", "deploy", "success", "")
+		_ = RecordDeployment("v2.0.0", "deploy", "success", "")
 
 		prev, err := GetPreviousVersion("v2.0.0")
 		if err != nil {
@@ -126,9 +149,9 @@ func TestGetPreviousVersion_FromHistory(t *testing.T) {
 
 func TestGetPreviousVersion_SkipsFailed(t *testing.T) {
 	withTempHistory(t, func() {
-		RecordDeployment("v1.0.0", "deploy", "success", "")
-		RecordDeployment("v2.0.0", "deploy", "fail", "error")
-		RecordDeployment("v3.0.0", "deploy", "success", "")
+		_ = RecordDeployment("v1.0.0", "deploy", "success", "")
+		_ = RecordDeployment("v2.0.0", "deploy", "fail", "error")
+		_ = RecordDeployment("v3.0.0", "deploy", "success", "")
 
 		prev, err := GetPreviousVersion("v3.0.0")
 		if err != nil {
@@ -142,8 +165,8 @@ func TestGetPreviousVersion_SkipsFailed(t *testing.T) {
 
 func TestGetPreviousVersion_SkipsCurrent(t *testing.T) {
 	withTempHistory(t, func() {
-		RecordDeployment("v1.0.0", "deploy", "success", "")
-		RecordDeployment("v1.0.0", "deploy", "success", "") // same version again
+		_ = RecordDeployment("v1.0.0", "deploy", "success", "")
+		_ = RecordDeployment("v1.0.0", "deploy", "success", "") // same version again
 
 		// 只有 v1.0.0，找不到不同的版本，回退到 git tag
 		_, err := GetPreviousVersion("v1.0.0")
@@ -152,6 +175,13 @@ func TestGetPreviousVersion_SkipsCurrent(t *testing.T) {
 			t.Log("GetPreviousVersion fell back to git tags (expected in git repo)")
 		}
 	})
+}
+
+func TestGetPreviousGitTag_CurrentMissing(t *testing.T) {
+	_, err := getPreviousGitTag("missing-tag")
+	if err == nil {
+		t.Fatal("getPreviousGitTag should fail when current tag is missing")
+	}
 }
 
 // ── FormatHistory ───────────────────────────────────────────────
@@ -246,7 +276,9 @@ func TestHistoryEntry_OMitEmpty(t *testing.T) {
 
 func TestRecordDeployment_CreatesDir(t *testing.T) {
 	withTempHistory(t, func() {
-		RecordDeployment("v1.0.0", "deploy", "success", "")
+		if err := RecordDeployment("v1.0.0", "deploy", "success", ""); err != nil {
+			t.Fatalf("RecordDeployment error: %v", err)
+		}
 
 		info, err := os.Stat(".ship")
 		if err != nil {

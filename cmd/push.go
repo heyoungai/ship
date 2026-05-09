@@ -20,7 +20,10 @@ var pushCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		profiles := cfg.GetProfiles(pushProfile)
+		profiles, err := cfg.GetProfiles(pushProfile)
+		if err != nil {
+			return err
+		}
 		for _, p := range profiles {
 			if err := doPush(ver, p); err != nil {
 				return err

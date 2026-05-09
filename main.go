@@ -1,8 +1,8 @@
 package main
 
 import (
-	"ship/cmd"
 	"os"
+	"ship/cmd"
 )
 
 func main() {

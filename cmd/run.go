@@ -11,6 +11,7 @@ import (
 var (
 	runVersion    string
 	runEnvFile    string
+	runProfile    string
 	runSkipDeploy bool
 )
 
@@ -23,7 +24,10 @@ var runCmd = &cobra.Command{
 			return err
 		}
 
-		profiles := cfg.GetProfiles("")
+		profiles, err := cfg.GetProfiles(runProfile)
+		if err != nil {
+			return err
+		}
 		profileNames := make([]string, len(profiles))
 		for i, p := range profiles {
 			profileNames[i] = internal.FormatProfileName(p)
@@ -70,10 +74,11 @@ var runCmd = &cobra.Command{
 		if !runSkipDeploy && cfg.Deploy.Enabled {
 			internal.ProgressStep(4, "远程部署")
 			if err := doDeploy(ver); err != nil {
-				internal.RecordDeployment(ver, "deploy", "fail", err.Error())
+				return recordDeploymentResult(err, ver, "deploy", "fail", err.Error())
+			}
+			if err := recordDeploymentResult(nil, ver, "deploy", "success", ""); err != nil {
 				return err
 			}
-			internal.RecordDeployment(ver, "deploy", "success", "")
 		} else if runSkipDeploy {
 			fmt.Printf("  %s 已跳过远程部署\n", internal.WarnStyle.Render("⏭"))
 		}
@@ -86,5 +91,6 @@ var runCmd = &cobra.Command{
 func init() {
 	runCmd.Flags().StringVarP(&runVersion, "version", "v", "", "版本号 (默认取最新 git tag)")
 	runCmd.Flags().StringVar(&runEnvFile, "env-file", "", ".env 文件路径 (默认使用配置)")
+	runCmd.Flags().StringVarP(&runProfile, "profile", "p", "", "指定 profile 名称 (默认全部)")
 	runCmd.Flags().BoolVar(&runSkipDeploy, "skip-deploy", false, "跳过远程部署步骤")
 }

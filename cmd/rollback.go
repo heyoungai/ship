@@ -48,12 +48,13 @@ func doRollback() error {
 
 	// 2. 执行部署
 	if err := doDeploy(targetVersion); err != nil {
-		internal.RecordDeployment(targetVersion, "rollback", "fail", err.Error())
-		return err
+		return recordDeploymentResult(err, targetVersion, "rollback", "fail", err.Error())
 	}
 
 	// 3. 记录历史
-	internal.RecordDeployment(targetVersion, "rollback", "success", "")
+	if err := recordDeploymentResult(nil, targetVersion, "rollback", "success", ""); err != nil {
+		return err
+	}
 	fmt.Printf("  %s 回滚完成\n", internal.SuccessStyle.Render("✔"))
 	return nil
 }

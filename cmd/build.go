@@ -3,17 +3,24 @@ package cmd
 import (
 	"fmt"
 	"ship/internal"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
 
-var buildEnvFile string
+var (
+	buildEnvFile string
+	buildProfile string
+)
 
 var buildCmd = &cobra.Command{
 	Use:   "build",
 	Short: "构建 Docker 镜像",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		profiles := cfg.GetProfiles("")
+		profiles, err := cfg.GetProfiles(buildProfile)
+		if err != nil {
+			return err
+		}
 		internal.ProgressInit(len(profiles))
 		for i, p := range profiles {
 			internal.ProgressStep(i+1, "构建镜像")
@@ -27,6 +34,7 @@ var buildCmd = &cobra.Command{
 
 func init() {
 	buildCmd.Flags().StringVar(&buildEnvFile, "env-file", "", ".env 文件路径 (默认使用配置)")
+	buildCmd.Flags().StringVarP(&buildProfile, "profile", "p", "", "指定 profile 名称 (默认全部)")
 }
 
 // doBuild 执行单个 profile 的 Docker 镜像构建
@@ -54,16 +62,16 @@ func doBuild(profile internal.Profile, envFile string) error {
 		envMap := make(map[string]string)
 		for i := 0; i < len(buildArgs)-1; i += 2 {
 			if buildArgs[i] == "--build-arg" {
-				parts := splitFirst(buildArgs[i+1], "=")
-				if len(parts) == 2 {
-					envMap[parts[0]] = parts[1]
+				key, value, ok := strings.Cut(buildArgs[i+1], "=")
+				if ok {
+					envMap[key] = value
 				}
 			}
 		}
 		envMap = internal.MergeEnv(envMap, profile.Env)
 
 		if err := internal.RunCmdWithEnv(
-			[]string{"sh", "-c", localBuild},
+			internal.ShellCommandArgs(localBuild),
 			localBuild,
 			envMap,
 		); err != nil {
@@ -81,12 +89,17 @@ func doBuild(profile internal.Profile, envFile string) error {
 
 	tag := internal.ImageTag("latest", profile)
 	internal.ProgressSub(cfg.ImageRef(tag))
+	outputArgs, err := internal.BuildxOutputArgs(cfg.Build.Platforms)
+	if err != nil {
+		return err
+	}
 
 	args := []string{
 		"docker", "buildx", "build",
 		"--platform", cfg.Build.Platforms,
 		"--file", cfg.Build.Dockerfile,
 	}
+	args = append(args, outputArgs...)
 	args = append(args, buildArgs...)
 
 	for k, v := range profile.Env {
@@ -100,19 +113,4 @@ func doBuild(profile internal.Profile, envFile string) error {
 	}
 
 	return nil
-}
-
-// splitFirst 按第一个分隔符分割字符串
-func splitFirst(s, sep string) []string {
-	idx := -1
-	for i := 0; i < len(s); i++ {
-		if string(s[i]) == sep {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
-		return []string{s}
-	}
-	return []string{s[:idx], s[idx+1:]}
 }

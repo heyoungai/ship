@@ -12,8 +12,8 @@ var historyLimit int
 var historyCmd = &cobra.Command{
 	Use:   "history",
 	Short: "查看部署历史记录",
-	Run: func(cmd *cobra.Command, args []string) {
-		doHistory()
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return doHistory()
 	},
 }
 
@@ -22,8 +22,12 @@ func init() {
 }
 
 // doHistory 显示部署历史
-func doHistory() {
-	entries := internal.LoadHistory()
+func doHistory() error {
+	entries, err := internal.LoadHistory()
+	if err != nil {
+		return err
+	}
 	fmt.Printf("\n  %s\n", internal.HeaderStyle.Render("▸ 部署历史"))
 	fmt.Println(internal.FormatHistory(entries, historyLimit))
+	return nil
 }

@@ -20,7 +20,10 @@ var tagCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		profiles := cfg.GetProfiles(tagProfile)
+		profiles, err := cfg.GetProfiles(tagProfile)
+		if err != nil {
+			return err
+		}
 		for _, p := range profiles {
 			if err := doTag(ver, p); err != nil {
 				return err

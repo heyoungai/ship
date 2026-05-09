@@ -11,16 +11,22 @@ import (
 var cfg *internal.Config
 
 var rootCmd = &cobra.Command{
-	Use:   "ship",
-	Short: "Docker 镜像构建、推送和远程部署 CLI 工具",
-	Long:  "支持独立执行 build / tag / push / deploy 各阶段，也可 run 一键全流程。\n支持 ship.toml 配置文件和矩阵构建（多品牌/多变体）。",
-	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+	Use:          "ship",
+	Short:        "Docker 镜像构建、推送和远程部署 CLI 工具",
+	Long:         "支持独立执行 build / tag / push / deploy 各阶段，也可 run 一键全流程。\n支持 ship.toml 配置文件和矩阵构建（多品牌/多变体）。",
+	SilenceUsage: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// 不需要配置的命令
 		switch cmd.Name() {
 		case "init", "version", "current", "history", "help", "completion":
-			return
+			return nil
 		}
-		cfg = internal.LoadConfig(os.Getenv("IMAGE_NAME"))
+		loadedCfg, err := internal.LoadConfig(os.Getenv("IMAGE_NAME"))
+		if err != nil {
+			return err
+		}
+		cfg = loadedCfg
+		return nil
 	},
 }
 

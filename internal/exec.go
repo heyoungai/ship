@@ -12,10 +12,11 @@ import (
 // RunCmd 执行外部命令，实时输出 stdout/stderr，失败时返回错误
 //
 // 输出格式：
-//   $ docker buildx build ...
-//   [执行中] 构建镜像
-//     (命令输出逐行显示)
-//   [完成]   构建镜像
+//
+//	$ docker buildx build ...
+//	[执行中] 构建镜像
+//	  (命令输出逐行显示)
+//	[完成]   构建镜像
 func RunCmd(args []string, label string) error {
 	fmt.Printf("  %s %s\n", DimStyle.Render("$"), DimStyle.Render(strings.Join(args, " ")))
 	fmt.Printf("  %s %s\n", InfoStyle.Render("·"), label)

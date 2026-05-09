@@ -1,6 +1,7 @@
 package internal
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -28,18 +29,19 @@ type Profile struct {
 // Config 定义完整配置
 type Config struct {
 	Build struct {
-		Platforms   string `toml:"platforms"`
-		Dockerfile  string `toml:"dockerfile"`
-		EnvFile     string `toml:"env_file"`
-		LocalBuild  string `toml:"local_build"`
+		Platforms  string `toml:"platforms"`
+		Dockerfile string `toml:"dockerfile"`
+		EnvFile    string `toml:"env_file"`
+		LocalBuild string `toml:"local_build"`
 	} `toml:"build"`
 
 	Registries []Registry `toml:"registries"`
 
 	Deploy struct {
-		Enabled bool   `toml:"enabled"`
-		Host    string `toml:"host"`
-		Path    string `toml:"path"`
+		Enabled     bool              `toml:"enabled"`
+		Host        string            `toml:"host"`
+		Path        string            `toml:"path"`
+		Healthcheck DeployHealthcheck `toml:"healthcheck"`
 	} `toml:"deploy"`
 
 	Matrix []Profile `toml:"matrix"`
@@ -49,7 +51,7 @@ type Config struct {
 }
 
 // LoadConfig 加载配置：内置默认值 → ship.toml → 环境变量覆盖 → 校验必填字段
-func LoadConfig(imageName string) *Config {
+func LoadConfig(imageName string) (*Config, error) {
 	cfg := &Config{ImageName: imageName}
 
 	// 1. 内置默认值（仅通用字段，项目特定字段不设默认值）
@@ -61,8 +63,7 @@ func LoadConfig(imageName string) *Config {
 	// 2. 读取 ship.toml（如果存在）
 	if _, err := os.Stat("ship.toml"); err == nil {
 		if _, err := toml.DecodeFile("ship.toml", cfg); err != nil {
-			fmt.Printf("  %s 读取 ship.toml 失败: %v\n", ErrorStyle.Render("✖"), err)
-			os.Exit(1)
+			return nil, fmt.Errorf("读取 ship.toml 失败: %w", err)
 		}
 	}
 
@@ -85,6 +86,7 @@ func LoadConfig(imageName string) *Config {
 	if v := os.Getenv("ENV_FILE"); v != "" {
 		cfg.Build.EnvFile = v
 	}
+	cfg.Deploy.Healthcheck.ApplyDefaults()
 
 	// 4. 自动推导：image_name 未设置时从第一个 registry 的 image 推导
 	if cfg.ImageName == "" && len(cfg.Registries) > 0 {
@@ -92,13 +94,15 @@ func LoadConfig(imageName string) *Config {
 	}
 
 	// 5. 校验必填字段
-	cfg.validate()
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 
-	return cfg
+	return cfg, nil
 }
 
-// validate 校验必填字段，一次性报告所有缺失项
-func (c *Config) validate() {
+// Validate 校验必填字段，一次性返回所有缺失项
+func (c *Config) Validate() error {
 	var missing []string
 
 	if c.ImageName == "" {
@@ -115,15 +119,28 @@ func (c *Config) validate() {
 	if len(c.Registries) == 0 {
 		missing = append(missing, "registries (ship.toml [[registries]])")
 	}
+	defaultProfiles := 0
+	for _, profile := range c.Matrix {
+		if profile.Default {
+			defaultProfiles++
+		}
+	}
+	if defaultProfiles > 1 {
+		missing = append(missing, "matrix.default 只能有一个 profile 为 true")
+	}
 
 	if len(missing) > 0 {
-		fmt.Printf("\n  %s %s\n", ErrorTagStyle.Render("✖"), ErrorTagStyle.Render("配置缺失"))
-		for _, m := range missing {
-			fmt.Printf("    %s %s\n", DimStyle.Render("•"), m)
+		var b strings.Builder
+		b.WriteString("配置缺失或无效：")
+		for _, item := range missing {
+			b.WriteString("\n- ")
+			b.WriteString(item)
 		}
-		fmt.Printf("\n  %s\n", DimStyle.Render("参考 config.example.toml 创建 ship.toml"))
-		os.Exit(1)
+		b.WriteString("\n参考 config.example.toml 创建或修正 ship.toml")
+		return errors.New(b.String())
 	}
+
+	return nil
 }
 
 // DefaultProfile 返回默认 profile（无 matrix 时的单次构建）
@@ -138,20 +155,22 @@ func (c *Config) DefaultProfile() Profile {
 
 // GetProfiles 获取要构建的 profile 列表
 // name 为空时返回所有 profile（无 matrix 则返回单个默认 profile）
-func (c *Config) GetProfiles(name string) []Profile {
+func (c *Config) GetProfiles(name string) ([]Profile, error) {
 	if len(c.Matrix) == 0 {
-		return []Profile{{Name: "", Default: true}}
+		if name != "" {
+			return nil, fmt.Errorf("当前项目未配置 matrix，不能选择 profile: %s", name)
+		}
+		return []Profile{{Name: "", Default: true}}, nil
 	}
 	if name != "" {
 		for _, p := range c.Matrix {
 			if p.Name == name {
-				return []Profile{p}
+				return []Profile{p}, nil
 			}
 		}
-		fmt.Printf("  %s 未找到 profile: %s\n", ErrorStyle.Render("✖"), name)
-		os.Exit(1)
+		return nil, fmt.Errorf("未找到 profile: %s", name)
 	}
-	return c.Matrix
+	return c.Matrix, nil
 }
 
 // ImageRef 生成镜像引用（image:tag）

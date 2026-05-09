@@ -3,6 +3,7 @@ package internal
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -168,9 +169,20 @@ func TestStringSliceContains_NotFound(t *testing.T) {
 
 func TestGetProfiles_NoMatrix(t *testing.T) {
 	cfg := &Config{}
-	profiles := cfg.GetProfiles("")
+	profiles, err := cfg.GetProfiles("")
+	if err != nil {
+		t.Fatalf("GetProfiles(no matrix) error: %v", err)
+	}
 	if len(profiles) != 1 || profiles[0].Name != "" || !profiles[0].Default {
 		t.Errorf("GetProfiles(no matrix) = %v, want single default", profiles)
+	}
+}
+
+func TestGetProfiles_NoMatrixRejectsNamedProfile(t *testing.T) {
+	cfg := &Config{}
+	_, err := cfg.GetProfiles("linglu")
+	if err == nil {
+		t.Fatal("GetProfiles should reject named profile when matrix is not configured")
 	}
 }
 
@@ -181,7 +193,10 @@ func TestGetProfiles_WithMatrix(t *testing.T) {
 			{Name: "b"},
 		},
 	}
-	profiles := cfg.GetProfiles("")
+	profiles, err := cfg.GetProfiles("")
+	if err != nil {
+		t.Fatalf("GetProfiles(all) error: %v", err)
+	}
 	if len(profiles) != 2 {
 		t.Errorf("GetProfiles(all) got %d, want 2", len(profiles))
 	}
@@ -194,9 +209,24 @@ func TestGetProfiles_FilterByName(t *testing.T) {
 			{Name: "b"},
 		},
 	}
-	profiles := cfg.GetProfiles("b")
+	profiles, err := cfg.GetProfiles("b")
+	if err != nil {
+		t.Fatalf("GetProfiles(b) error: %v", err)
+	}
 	if len(profiles) != 1 || profiles[0].Name != "b" {
 		t.Errorf("GetProfiles(b) = %v, want [b]", profiles)
+	}
+}
+
+func TestGetProfiles_FilterByMissingName(t *testing.T) {
+	cfg := &Config{
+		Matrix: []Profile{
+			{Name: "a", Default: true},
+		},
+	}
+	_, err := cfg.GetProfiles("missing")
+	if err == nil {
+		t.Fatal("GetProfiles should reject unknown profile")
 	}
 }
 
@@ -266,7 +296,71 @@ func TestLoadBuildArgs_ValidFile(t *testing.T) {
 	}
 }
 
-// ── validate ────────────────────────────────────────────────────
-// 注意：validate() 调用 os.Exit(1)，无法直接测试。
-// 通过 LoadConfig 集成测试间接覆盖（需要 ship.toml 文件）。
-// 这里测试不涉及 os.Exit 的纯逻辑。
+// ── Validate ─────────────────────────────────────────────────────
+
+func TestValidate_MissingFields(t *testing.T) {
+	cfg := &Config{}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate should fail when required fields are missing")
+	}
+	if !strings.Contains(err.Error(), "image_name") || !strings.Contains(err.Error(), "registries") {
+		t.Fatalf("Validate error should mention missing fields, got: %v", err)
+	}
+}
+
+func TestValidate_MultipleDefaultProfiles(t *testing.T) {
+	cfg := &Config{
+		ImageName: "home",
+		Registries: []Registry{
+			{Type: "dockerhub", Namespace: "deali", Image: "home"},
+		},
+		Matrix: []Profile{
+			{Name: "a", Default: true},
+			{Name: "b", Default: true},
+		},
+	}
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate should reject multiple default profiles")
+	}
+}
+
+func TestValidate_Success(t *testing.T) {
+	cfg := &Config{
+		ImageName: "home",
+		Registries: []Registry{
+			{Type: "dockerhub", Namespace: "deali", Image: "home"},
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate returned error: %v", err)
+	}
+}
+
+// ── BuildxOutputArgs / ShellEscape ───────────────────────────────
+
+func TestBuildxOutputArgs_SinglePlatform(t *testing.T) {
+	args, err := BuildxOutputArgs("linux/amd64")
+	if err != nil {
+		t.Fatalf("BuildxOutputArgs(single) error: %v", err)
+	}
+	if len(args) != 1 || args[0] != "--load" {
+		t.Fatalf("BuildxOutputArgs(single) = %v, want [--load]", args)
+	}
+}
+
+func TestBuildxOutputArgs_MultiPlatform(t *testing.T) {
+	_, err := BuildxOutputArgs("linux/amd64,linux/arm64")
+	if err == nil {
+		t.Fatal("BuildxOutputArgs should reject multi-platform staged build")
+	}
+}
+
+func TestShellEscape(t *testing.T) {
+	got := ShellEscape("a'b")
+	want := `'a'"'"'b'`
+	if got != want {
+		t.Fatalf("ShellEscape = %q, want %q", got, want)
+	}
+}
