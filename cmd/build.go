@@ -14,11 +14,15 @@ var buildCmd = &cobra.Command{
 	Short: "构建 Docker 镜像",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		profiles := cfg.GetProfiles("")
-		for _, p := range profiles {
+		internal.ProgressInit(len(profiles))
+		for i, p := range profiles {
+			internal.ProgressStep(i+1, "构建镜像")
 			if err := doBuild(p, buildEnvFile); err != nil {
 				return err
 			}
+			internal.ProgressDone()
 		}
+		internal.ProgressFinish()
 		return nil
 	},
 }
@@ -34,7 +38,7 @@ func doBuild(profile internal.Profile, envFile string) error {
 	}
 
 	name := internal.FormatProfileName(profile)
- nameLabel := ""
+	nameLabel := ""
 	if name != "" {
 		nameLabel = " " + internal.BoldStyle.Render("["+name+"]")
 	}
@@ -46,8 +50,8 @@ func doBuild(profile internal.Profile, envFile string) error {
 	}
 	if localBuild != "" {
 		fmt.Printf("  %s 本地构建%s\n", internal.StepStyle.Render("▸"), nameLabel)
+		internal.ProgressSub(localBuild)
 
-		// 加载 .env + profile env
 		buildArgs := internal.LoadBuildArgs(envFile)
 		envMap := make(map[string]string)
 		for i := 0; i < len(buildArgs)-1; i += 2 {
@@ -62,22 +66,25 @@ func doBuild(profile internal.Profile, envFile string) error {
 
 		if err := internal.RunCmdWithEnv(
 			[]string{"sh", "-c", localBuild},
-			fmt.Sprintf("执行 %s", localBuild),
+			localBuild,
 			envMap,
 		); err != nil {
 			return err
 		}
+		internal.ProgressDone()
 	}
 
 	// 2. Docker buildx build
 	buildArgs := internal.LoadBuildArgs(envFile)
 	argCount := len(buildArgs) / 2
-	fmt.Printf("  %s 构建镜像%s  %s\n",
+	fmt.Printf("  %s Docker 构建%s  %s\n",
 		internal.StepStyle.Render("▸"),
 		nameLabel,
 		internal.DimStyle.Render(fmt.Sprintf("(%d build-args)", argCount)))
 
 	tag := internal.ImageTag("latest", profile)
+	internal.ProgressSub(cfg.ImageRef(tag))
+
 	args := []string{
 		"docker", "buildx", "build",
 		"--platform", cfg.Build.Platforms,
@@ -85,18 +92,17 @@ func doBuild(profile internal.Profile, envFile string) error {
 	}
 	args = append(args, buildArgs...)
 
-	// 注入 profile env 作为 build-arg
 	for k, v := range profile.Env {
 		args = append(args, "--build-arg", fmt.Sprintf("%s=%s", k, v))
 	}
 
 	args = append(args, "--tag", cfg.ImageRef(tag), ".")
 
-	if err := internal.RunCmd(args, "docker buildx build"); err != nil {
+	if err := internal.RunCmd(args, cfg.ImageRef(tag)); err != nil {
 		return err
 	}
+	internal.ProgressDone()
 
-	fmt.Printf("  %s %s\n", internal.SuccessStyle.Render("✔"), cfg.ImageRef(tag))
 	return nil
 }
 

@@ -36,47 +36,54 @@ var runCmd = &cobra.Command{
 
 		fmt.Printf("\n  %s\n",
 			internal.BoldStyle.Render(fmt.Sprintf(
-				"🚀 开始完整流程  version=%s  profiles=%s  steps=%d",
-				ver, strings.Join(profileNames, ", "), totalSteps,
+				"🚀 ship run  version=%s  profiles=%s",
+				ver, strings.Join(profileNames, ", "),
 			)))
 
+		internal.ProgressInit(totalSteps)
+
 		// 1. Build
-		printStep(totalSteps, 1, "构建镜像")
+		internal.ProgressStep(1, "构建镜像")
 		for _, p := range profiles {
 			if err := doBuild(p, runEnvFile); err != nil {
 				return err
 			}
 		}
+		internal.ProgressDone()
 
 		// 2. Tag
-		printStep(totalSteps, 2, "打 Tag")
+		internal.ProgressStep(2, "打 Tag")
 		for _, p := range profiles {
 			if err := doTag(ver, p); err != nil {
 				return err
 			}
 		}
+		internal.ProgressDone()
 
 		// 3. Push
-		printStep(totalSteps, 3, "推送镜像")
+		internal.ProgressStep(3, "推送镜像")
 		for _, p := range profiles {
 			if err := doPush(ver, p); err != nil {
 				return err
 			}
 		}
+		internal.ProgressDone()
 
 		// 4. Deploy
 		if !runSkipDeploy && cfg.Deploy.Enabled {
-			printStep(totalSteps, 4, "远程部署")
+			internal.ProgressStep(4, "远程部署")
 			if err := doDeploy(ver); err != nil {
 				internal.RecordDeployment(ver, "deploy", "fail", err.Error())
 				return err
 			}
 			internal.RecordDeployment(ver, "deploy", "success", "")
+			internal.ProgressDone()
 		} else if runSkipDeploy {
 			fmt.Printf("  %s 已跳过远程部署\n", internal.WarnStyle.Render("⏭"))
 		}
 
-		printDone("所有任务已完成")
+		internal.ProgressFinish()
+		fmt.Printf("\n  %s\n", internal.SuccessTagStyle.Render("✔ 所有任务已完成"))
 		return nil
 	},
 }

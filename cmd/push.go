@@ -45,33 +45,34 @@ func doPush(version string, profile internal.Profile) error {
 	}
 
 	for _, target := range cfg.RegistryTargets(remoteTag) {
-		fmt.Printf("  %s%s  → %s\n",
+		fmt.Printf("  %s Push%s  → %s\n",
 			internal.StepStyle.Render("▸"),
 			nameLabel,
 			target)
+		internal.ProgressSub(target)
 		if err := internal.RunCmd(
 			[]string{"docker", "push", target},
-			fmt.Sprintf("docker push → %s", target),
+			target,
 		); err != nil {
 			return err
 		}
-		fmt.Printf("  %s %s\n", internal.SuccessStyle.Render("✔"), target)
+		internal.ProgressDone()
 	}
 
-	// 默认 profile 额外推送 :latest
 	if profile.Default {
 		for _, target := range cfg.RegistryTargets("latest") {
-			fmt.Printf("  %s%s  %s\n",
+			fmt.Printf("  %s Push%s  %s\n",
 				internal.StepStyle.Render("▸"),
 				nameLabel,
 				internal.DimStyle.Render("→ latest"))
+			internal.ProgressSub(target)
 			if err := internal.RunCmd(
 				[]string{"docker", "push", target},
-				fmt.Sprintf("docker push → %s", target),
+				target,
 			); err != nil {
 				return err
 			}
-			fmt.Printf("  %s %s\n", internal.SuccessStyle.Render("✔"), target)
+			internal.ProgressDone()
 		}
 	}
 

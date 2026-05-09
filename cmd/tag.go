@@ -45,35 +45,35 @@ func doTag(version string, profile internal.Profile) error {
 		nameLabel = " " + internal.BoldStyle.Render("["+name+"]")
 	}
 
-	// 打版本 tag（如 v2.1.0）
 	for _, target := range cfg.RegistryTargets(remoteTag) {
-		fmt.Printf("  %s%s  %s → %s\n",
+		fmt.Printf("  %s Tag%s  %s → %s\n",
 			internal.StepStyle.Render("▸"),
 			nameLabel,
 			cfg.ImageRef(localTag), target)
+		internal.ProgressSub(target)
 		if err := internal.RunCmd(
 			[]string{"docker", "tag", cfg.ImageRef(localTag), target},
-			fmt.Sprintf("docker tag → %s", target),
+			target,
 		); err != nil {
 			return err
 		}
-		fmt.Printf("  %s %s\n", internal.SuccessStyle.Render("✔"), target)
+		internal.ProgressDone()
 	}
 
-	// 默认 profile 额外打 :latest tag
 	if profile.Default {
 		for _, target := range cfg.RegistryTargets("latest") {
-			fmt.Printf("  %s%s  %s\n",
+			fmt.Printf("  %s Tag%s  %s\n",
 				internal.StepStyle.Render("▸"),
 				nameLabel,
 				internal.DimStyle.Render("→ latest"))
+			internal.ProgressSub(target)
 			if err := internal.RunCmd(
 				[]string{"docker", "tag", cfg.ImageRef(localTag), target},
-				fmt.Sprintf("docker tag → %s", target),
+				target,
 			); err != nil {
 				return err
 			}
-			fmt.Printf("  %s %s\n", internal.SuccessStyle.Render("✔"), target)
+			internal.ProgressDone()
 		}
 	}
 
