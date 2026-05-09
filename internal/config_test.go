@@ -18,10 +18,10 @@ func TestImageTag_DefaultProfile(t *testing.T) {
 }
 
 func TestImageTag_NamedProfile(t *testing.T) {
-	p := Profile{Name: "linglu", Default: true}
+	p := Profile{Name: "brand-a", Default: true}
 	got := ImageTag("v2.0.0", p)
-	if got != "v2.0.0-linglu" {
-		t.Errorf("ImageTag(linglu) = %q, want %q", got, "v2.0.0-linglu")
+	if got != "v2.0.0-brand-a" {
+		t.Errorf("ImageTag(brand-a) = %q, want %q", got, "v2.0.0-brand-a")
 	}
 }
 
@@ -139,9 +139,9 @@ func TestFormatProfileName_Default(t *testing.T) {
 }
 
 func TestFormatProfileName_Named(t *testing.T) {
-	got := FormatProfileName(Profile{Name: "linglu"})
-	if got != "linglu" {
-		t.Errorf("FormatProfileName(linglu) = %q, want %q", got, "linglu")
+	got := FormatProfileName(Profile{Name: "brand-a"})
+	if got != "brand-a" {
+		t.Errorf("FormatProfileName(brand-a) = %q, want %q", got, "brand-a")
 	}
 }
 
@@ -180,7 +180,7 @@ func TestGetProfiles_NoMatrix(t *testing.T) {
 
 func TestGetProfiles_NoMatrixRejectsNamedProfile(t *testing.T) {
 	cfg := &Config{}
-	_, err := cfg.GetProfiles("linglu")
+	_, err := cfg.GetProfiles("brand-a")
 	if err == nil {
 		t.Fatal("GetProfiles should reject named profile when matrix is not configured")
 	}

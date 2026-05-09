@@ -54,12 +54,12 @@ task build
 ./ship.exe run
 ./ship.exe run --skip-deploy
 ./ship.exe run -v v2.0.0 --env-file ./.env.local
-./ship.exe run -p linglu
+./ship.exe run -p brand-a
 
 # 矩阵构建：指定 profile
-./ship.exe build -p linglu
-./ship.exe tag -v v2.0.0 -p linglu
-./ship.exe push -v v2.0.0 -p linglu
+./ship.exe build -p brand-a
+./ship.exe tag -v v2.0.0 -p brand-a
+./ship.exe push -v v2.0.0 -p brand-a
 
 # 回滚部署
 ./ship.exe rollback              # 回滚到上一个成功版本
@@ -133,18 +133,18 @@ image = "canvas-studio"
 enabled = false
 
 [[matrix]]
-name = "linglu"
+name = "brand-a"
 default = true
-env = { NEXT_PUBLIC_APP_BRAND = "linglu" }
+env = { NEXT_PUBLIC_APP_BRAND = "brand-a" }
 
 [[matrix]]
-name = "fumian-denim"
-env = { NEXT_PUBLIC_APP_BRAND = "fumian-denim" }
+name = "brand-b"
+env = { NEXT_PUBLIC_APP_BRAND = "brand-b" }
 ```
 
 矩阵构建时，每个 profile 会：
 - 带 profile 环境变量执行构建
-- 生成带后缀的镜像 tag（如 `canvas-studio:v2.0.0-linglu`）
+- 生成带后缀的镜像 tag（如 `canvas-studio:v2.0.0-brand-a`）
 - 默认 profile 额外打 `:latest` tag
 
 ### 健康检查

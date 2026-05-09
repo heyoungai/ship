@@ -39,14 +39,14 @@ path = "/home/deali/projects/home"  # 远程项目路径
 #timeout_seconds = 5
 
 # ── 矩阵构建（可选）────────────────────────────────────────
-# 用于多品牌/多变体场景，如 canvas-studio 的多品牌构建
+# 用于多品牌/多变体场景，同一份代码构建出不同的镜像
 # 不配置此项则走默认单次构建流程
 #
 # [[matrix]]
-# name = "linglu"                   # 变体名称，用作 tag 后缀
+# name = "brand-a"                  # 变体名称，用作镜像 tag 后缀（如 v2.0.0-brand-a）
 # default = true                    # 默认变体，额外打 :latest tag
-# env = { NEXT_PUBLIC_APP_BRAND = "linglu", NEXT_PUBLIC_API_URL = "https://api.linglu.com" }
+# env = { NEXT_PUBLIC_APP_BRAND = "brand-a" }
 #
 # [[matrix]]
-# name = "fumian-denim"
-# env = { NEXT_PUBLIC_APP_BRAND = "fumian-denim", NEXT_PUBLIC_API_URL = "https://api.fumian.com" }
+# name = "brand-b"
+# env = { NEXT_PUBLIC_APP_BRAND = "brand-b" }

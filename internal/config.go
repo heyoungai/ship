@@ -180,7 +180,7 @@ func (c *Config) ImageRef(tag string) string {
 
 // ImageTag 生成带 profile 后缀的 tag
 // 默认 profile 不加后缀，如 v2.0.0
-// 其他 profile 加后缀，如 v2.0.0-linglu
+// 其他 profile 加后缀，如 v2.0.0-brand-a
 func ImageTag(version string, profile Profile) string {
 	if profile.Name == "" {
 		return version
