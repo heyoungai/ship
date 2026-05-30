@@ -2,6 +2,11 @@
 
 这份说明只讲最短路径，目标是让用户在 5 分钟内把 ship 跑起来。
 
+如果你要在团队里长期推广 ship，建议再一起阅读：
+
+- [design-principles.md](design-principles.md)
+- [docker-default-pattern.md](docker-default-pattern.md)
+
 ## 1. ship 是什么
 
 ship 是一个阶段式发布工具，当前已经可以覆盖两类常见场景：
@@ -289,3 +294,5 @@ CI 里一般只需要这几条原则：
 4. 最后补 `verify`、`steps`、`templates`
 
 这样定位问题最快。
+
+对大多数 Docker 项目，推荐直接采用 [docker-default-pattern.md](docker-default-pattern.md) 里的默认范式，不要先从 hooks 和 templates 开始。
