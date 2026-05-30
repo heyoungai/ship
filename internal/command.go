@@ -9,10 +9,25 @@ import (
 // ShellCommandArgs 根据当前平台返回执行 shell 命令所需的参数。
 // local_build 是字符串命令，这里统一由平台对应的 shell 负责解析。
 func ShellCommandArgs(command string) []string {
-	if runtime.GOOS == "windows" {
-		return []string{"powershell", "-NoProfile", "-Command", command}
+	args, _ := ShellCommandArgsWithMode("auto", command)
+	return args
+}
+
+// ShellCommandArgsWithMode 根据显式 shell 模式返回执行命令所需的参数。
+func ShellCommandArgsWithMode(shell, command string) ([]string, error) {
+	switch strings.ToLower(strings.TrimSpace(shell)) {
+	case "", "auto":
+		if runtime.GOOS == "windows" {
+			return []string{"powershell", "-NoProfile", "-Command", command}, nil
+		}
+		return []string{"sh", "-c", command}, nil
+	case "powershell", "pwsh":
+		return []string{"powershell", "-NoProfile", "-Command", command}, nil
+	case "sh", "bash":
+		return []string{"sh", "-c", command}, nil
+	default:
+		return nil, fmt.Errorf("不支持的 shell: %s", shell)
 	}
-	return []string{"sh", "-c", command}
 }
 
 // ShellEscape 将任意字符串安全包裹为远端 POSIX shell 单个参数。

@@ -19,7 +19,7 @@ var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "执行完整流程: build → tag → push → deploy",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ver, err := internal.ResolveVersion(runVersion)
+		ver, err := internal.ResolveVersion(cfg, runVersion)
 		if err != nil {
 			return err
 		}
@@ -39,9 +39,11 @@ var runCmd = &cobra.Command{
 		buildStep := buildStepTitle()
 		publishStep := publishStepTitle()
 		deployStep := deployStepTitle()
+		verifyStep := verifyStepTitle()
 		shouldTag := cfg.UsesTagStage()
 		shouldPublish := cfg.UsesPublishStage()
 		shouldDeploy := !runSkipDeploy && cfg.UsesDeployStage()
+		shouldVerify := !runSkipDeploy && cfg.UsesVerifyStage()
 
 		steps := []string{buildStep}
 		if shouldTag {
@@ -52,6 +54,9 @@ var runCmd = &cobra.Command{
 		}
 		if shouldDeploy {
 			steps = append(steps, deployStep)
+		}
+		if shouldVerify {
+			steps = append(steps, verifyStep)
 		}
 		totalSteps := len(steps)
 
@@ -72,7 +77,7 @@ var runCmd = &cobra.Command{
 		currentStep := 1
 		internal.ProgressStep(currentStep, buildStep)
 		for _, p := range profiles {
-			if err := doBuild(p, runEnvFile); err != nil {
+			if err := executeBuildProfile(ver, p, runEnvFile); err != nil {
 				return err
 			}
 		}
@@ -91,28 +96,52 @@ var runCmd = &cobra.Command{
 		if shouldPublish {
 			internal.ProgressStep(currentStep, publishStep)
 			for _, p := range profiles {
-				if err := doPush(ver, p); err != nil {
+				if err := executePublishProfile(ver, p); err != nil {
 					return err
 				}
 			}
 			currentStep++
 		}
 
+		deployProfile := selectDeployProfile(profiles)
 		if shouldDeploy {
 			internal.ProgressStep(currentStep, deployStep)
-			if err := doDeploy(ver); err != nil {
+			if err := executeDeployStage(ver, deployProfile); err != nil {
 				return recordDeploymentResult(err, ver, "deploy", "fail", err.Error())
 			}
+			currentStep++
+		} else if runSkipDeploy {
+			internal.PrintWarning("已跳过远程部署")
+		}
+
+		if shouldVerify {
+			internal.ProgressStep(currentStep, verifyStep)
+			if err := internal.ExecuteVerify(cfg, deployProfile, ver); err != nil {
+				return recordDeploymentResult(err, ver, "deploy", "fail", err.Error())
+			}
+		}
+
+		if shouldDeploy {
 			if err := recordDeploymentResult(nil, ver, "deploy", "success", ""); err != nil {
 				return err
 			}
-		} else if runSkipDeploy {
-			internal.PrintWarning("已跳过远程部署")
 		}
 
 		internal.PrintSuccess("所有任务已完成")
 		return nil
 	},
+}
+
+// verifyStepTitle 返回 verify 阶段的展示标题。
+func verifyStepTitle() string {
+	switch cfg.Verify.Driver {
+	case "ssh":
+		return "SSH 校验"
+	case "command":
+		return "本地校验"
+	default:
+		return "健康检查"
+	}
 }
 
 func init() {

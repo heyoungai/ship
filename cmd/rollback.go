@@ -33,7 +33,7 @@ func doRollback() error {
 	if rollbackVersion != "" {
 		targetVersion = rollbackVersion
 	} else {
-		currentVersion, err := internal.ResolveVersion("")
+		currentVersion, err := internal.ResolveVersion(cfg, "")
 		if err != nil {
 			fmt.Printf("  %s 无法确定当前版本\n", internal.ErrorStyle.Render("✖"))
 			return err
@@ -59,7 +59,11 @@ func doRollback() error {
 	}
 
 	// 2. 执行部署
-	if err := doDeploy(targetVersion); err != nil {
+	profile := cfg.DefaultProfile()
+	if err := executeDeployStage(targetVersion, profile); err != nil {
+		return recordDeploymentResult(err, targetVersion, "rollback", "fail", err.Error())
+	}
+	if err := internal.ExecuteVerify(cfg, profile, targetVersion); err != nil {
 		return recordDeploymentResult(err, targetVersion, "rollback", "fail", err.Error())
 	}
 

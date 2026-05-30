@@ -246,48 +246,48 @@ schema = 2
 - `publish.driver = "scp"` 或 `none`
 - `deploy.driver = "binary-install"`
 
-## 8. 推荐的实现顺序
+## 8. 当前落地状态
 
-### 第一阶段：把当前 image-first 扩成 pipeline-first
+截至当前仓库状态，v2 的三块核心能力都已经落地到执行链路：
 
-优先做：
+### 第一阶段：pipeline-first 已完成
+
+已落地：
 
 - `steps.prepare`
-- `version.fallback`
+- `steps.post_build`
+- `steps.pre_publish`
+- `steps.post_publish`
+- `steps.pre_deploy`
+- `steps.post_deploy`
+- `version.source / fallback / override_env`
 - `publish.registry.targets`
 - `deploy.compose.tag_key`
 - `deploy.compose.up`
 - `verify.http`
 
-这一步可以先吃掉：
+### 第二阶段：Go 二进制主链路已完成
 
-- `deali-home-fumadocs`
-- `avatar-sense`
-- `django-starter`
-- `LedgerBot`
-
-### 第二阶段：补 Go 二进制能力
-
-优先做：
+已落地：
 
 - `build.driver = "go-binary"`
 - `publish.driver = "scp"`
 - `deploy.driver = "binary-install"`
 
-这一步可以吃掉：
+### 第三阶段：模板与物料生成已完成首版执行
 
-- `server-tools\swag`
-
-### 第三阶段：补模板与物料生成
-
-优先做：
+已落地：
 
 - `[[templates]]`
-- 更完整的 `steps.prepare`
+- profile 过滤
+- 模板变量渲染
+- 与 `run / build / deploy / rollback` 的阶段衔接
 
-这一步可以吃掉：
+当前剩余工作已经不是“v2 主体未完成”，而是后续如果需要继续增强，可围绕：
 
-- `2\chats`
+- 更多模板变量
+- 更细粒度的 deploy/profile 语义
+- 更丰富的 artifact/output 管理
 
 ## 9. 第一版刻意不做的事情
 

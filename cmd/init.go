@@ -191,37 +191,73 @@ func generateConfig(info map[string]string) string {
 	var b strings.Builder
 
 	b.WriteString("# ship 配置文件\n")
-	b.WriteString("# 由 ship init 自动生成，请根据项目实际情况修改\n\n")
+	b.WriteString("# 由 ship init 自动生成，请根据项目实际情况修改\n")
+	b.WriteString("# 当前配置采用 ship.toml v2 schema\n\n")
 
-	// [build]
+	b.WriteString("schema = 2\n\n")
+
+	b.WriteString("# ── 项目元信息 ──────────────────────────────────────────────\n")
+	b.WriteString("[project]\n")
+	b.WriteString(fmt.Sprintf("name = %q\n\n", imageName))
+
+	b.WriteString("# ── 版本来源 ────────────────────────────────────────────────\n")
+	b.WriteString("[version]\n")
+	b.WriteString("source = \"git-tag\"\n")
+	b.WriteString("fallback = \"dev\"\n")
+	b.WriteString("override_env = \"SHIP_VERSION\"\n\n")
+
+	b.WriteString("# ── 功能开关 ────────────────────────────────────────────────\n")
+	b.WriteString("[features]\n")
+	b.WriteString("publish = true\n")
+	b.WriteString("deploy = false\n")
+	b.WriteString("rollback = true\n")
+	b.WriteString("verify = false\n\n")
+
 	b.WriteString("# ── 构建设置 ────────────────────────────────────────────────\n")
 	b.WriteString("[build]\n")
-	b.WriteString("platforms = \"linux/amd64\"  # 当前分阶段流程会把镜像 load 回本地，因此这里应保持单平台\n")
+	b.WriteString("driver = \"docker\"\n\n")
+	b.WriteString("[build.docker]\n")
+	b.WriteString(fmt.Sprintf("image = %q\n", imageName))
+	b.WriteString("context = \".\"\n")
 	b.WriteString("dockerfile = \"./Dockerfile\"\n")
-	b.WriteString(fmt.Sprintf("env_file = \"%s\"\n", envFile))
+	b.WriteString("platforms = [\"linux/amd64\"]\n")
+	b.WriteString(fmt.Sprintf("env_file = %q\n", envFile))
+	b.WriteString("build_args_from_env = true\n")
+	b.WriteString("load = true\n")
+	b.WriteString("latest_on_default_profile = true\n")
 
 	if v, ok := info["本地构建"]; ok {
-		b.WriteString(fmt.Sprintf("local_build = \"%s\"\n", v))
+		b.WriteString(fmt.Sprintf("local_build = %q\n", v))
 	}
 	b.WriteString("\n")
 
-	// [[registries]]
 	b.WriteString("# ── 镜像仓库 ────────────────────────────────────────────────\n")
-	b.WriteString("[[registries]]\n")
+	b.WriteString("[publish]\n")
+	b.WriteString("driver = \"registry\"\n\n")
+	b.WriteString("[publish.registry]\n")
+	b.WriteString("push = true\n")
+	b.WriteString("tag_latest_on_default_profile = true\n\n")
+	b.WriteString("[[publish.registry.targets]]\n")
 	b.WriteString("type = \"private\"\n")
 	b.WriteString("url = \"registry.cn-hangzhou.aliyuncs.com\"  # 改为你的仓库地址\n")
 	b.WriteString("namespace = \"deali\"                        # 改为你的命名空间\n")
-	b.WriteString(fmt.Sprintf("image = \"%s\"\n", imageName))
+	b.WriteString(fmt.Sprintf("image = %q\n", imageName))
 	b.WriteString("\n")
 
-	// [deploy]
 	b.WriteString("# ── 远程部署 ────────────────────────────────────────────────\n")
 	b.WriteString("[deploy]\n")
-	b.WriteString("enabled = false\n")
-	b.WriteString("host = \"your-server\"                       # SSH Host\n")
-	b.WriteString(fmt.Sprintf("path = \"/home/user/projects/%s\"  # 远程项目路径\n", imageName))
+	b.WriteString("driver = \"none\"\n\n")
+	b.WriteString("# [deploy.compose]\n")
+	b.WriteString("# host = \"your-server\"                       # SSH Host\n")
+	b.WriteString(fmt.Sprintf("# path = %q  # 远程项目路径\n", "/home/user/projects/"+imageName))
+	b.WriteString("# env_file = \".env\"\n")
+	b.WriteString("# tag_key = \"APP_IMAGE_TAG\"\n")
+	b.WriteString("# up = \"docker compose --env-file ./.env up -d --remove-orphans\"\n")
 	b.WriteString("\n")
-	b.WriteString("# [deploy.healthcheck]\n")
+	b.WriteString("# ── 部署后校验（可选）──────────────────────────────────────\n")
+	b.WriteString("[verify]\n")
+	b.WriteString("driver = \"none\"\n\n")
+	b.WriteString("# [verify.http]\n")
 	b.WriteString("# url = \"https://example.com/api/health\"\n")
 	b.WriteString("# expected_status = 200\n")
 	b.WriteString("# attempts = 20\n")
@@ -229,16 +265,17 @@ func generateConfig(info map[string]string) string {
 	b.WriteString("# timeout_seconds = 5\n")
 	b.WriteString("\n")
 
-	// [matrix] 注释示例
 	b.WriteString("# ── 矩阵构建（可选）────────────────────────────────────────\n")
 	b.WriteString("# [[matrix]]\n")
 	b.WriteString("# name = \"brand-a\"\n")
 	b.WriteString("# default = true\n")
 	b.WriteString("# env = { NEXT_PUBLIC_APP_BRAND = \"brand-a\" }\n")
+	b.WriteString("# vars = { brand = \"brand-a\" }\n")
 	b.WriteString("#\n")
 	b.WriteString("# [[matrix]]\n")
 	b.WriteString("# name = \"brand-b\"\n")
 	b.WriteString("# env = { NEXT_PUBLIC_APP_BRAND = \"brand-b\" }\n")
+	b.WriteString("# vars = { brand = \"brand-b\" }\n")
 
 	return b.String()
 }

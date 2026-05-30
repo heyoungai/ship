@@ -743,6 +743,11 @@ func (c *Config) UsesDeployStage() bool {
 	return c.Features.Deploy && c.Deploy.Driver != "none"
 }
 
+// UsesVerifyStage 返回当前配置是否需要 verify 阶段。
+func (c *Config) UsesVerifyStage() bool {
+	return (c.Features.Verify && c.Verify.Driver != "none") || c.Deploy.Healthcheck.Enabled()
+}
+
 // StringSliceContains 检查字符串切片是否包含指定元素。
 func StringSliceContains(slice []string, item string) bool {
 	for _, s := range slice {

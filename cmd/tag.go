@@ -16,7 +16,7 @@ var tagCmd = &cobra.Command{
 	Use:   "tag",
 	Short: "给镜像打 tag（仅 Docker/registry）",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ver, err := internal.ResolveVersion(tagVersion)
+		ver, err := internal.ResolveVersion(cfg, tagVersion)
 		if err != nil {
 			return err
 		}

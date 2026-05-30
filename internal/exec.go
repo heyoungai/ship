@@ -2,6 +2,7 @@ package internal
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -84,10 +85,84 @@ func GetLatestTag() (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// ResolveVersion 解析版本号，空字符串时自动获取最新 git tag
-func ResolveVersion(version string) (string, error) {
-	if version != "" {
+// ResolveVersion 按命令参数、环境变量和 v2 配置解析版本号。
+func ResolveVersion(cfg *Config, version string) (string, error) {
+	return resolveVersionWithLookup(cfg, version, os.Getenv, GetLatestTag)
+}
+
+// resolveVersionWithLookup 注入环境读取和 git tag 查询，便于测试版本决策逻辑。
+func resolveVersionWithLookup(cfg *Config, version string, getenv func(string) string, latestTag func() (string, error)) (string, error) {
+	if strings.TrimSpace(version) != "" {
 		return version, nil
 	}
-	return GetLatestTag()
+
+	if cfg == nil {
+		return latestTag()
+	}
+
+	overrideEnv := strings.TrimSpace(cfg.Version.OverrideEnv)
+	if overrideEnv != "" {
+		if override := strings.TrimSpace(getenv(overrideEnv)); override != "" {
+			return override, nil
+		}
+	}
+
+	resolved, err := resolveVersionFromSource(cfg, overrideEnv, getenv, latestTag)
+	if err == nil && strings.TrimSpace(resolved) != "" {
+		return resolved, nil
+	}
+
+	return resolveVersionFallback(cfg, err)
+}
+
+// resolveVersionFromSource 根据 version.source 读取版本来源。
+func resolveVersionFromSource(cfg *Config, overrideEnv string, getenv func(string) string, latestTag func() (string, error)) (string, error) {
+	switch cfg.Version.Source {
+	case "", "git-tag":
+		return latestTag()
+	case "env":
+		if overrideEnv == "" {
+			return "", errors.New("version.override_env 不能为空")
+		}
+		resolved := strings.TrimSpace(getenv(overrideEnv))
+		if resolved == "" {
+			return "", fmt.Errorf("环境变量 %s 未设置", overrideEnv)
+		}
+		return resolved, nil
+	case "static":
+		resolved := strings.TrimSpace(cfg.Version.Static)
+		if resolved == "" {
+			return "", errors.New("version.static 不能为空")
+		}
+		return resolved, nil
+	default:
+		return "", fmt.Errorf("不支持的 version.source: %s", cfg.Version.Source)
+	}
+}
+
+// resolveVersionFallback 在主版本来源失败时应用 fallback 策略。
+func resolveVersionFallback(cfg *Config, sourceErr error) (string, error) {
+	switch cfg.Version.Fallback {
+	case "", "error":
+		if sourceErr == nil {
+			return "", errors.New("无法解析版本")
+		}
+		return "", sourceErr
+	case "dev":
+		return "dev", nil
+	case "static":
+		resolved := strings.TrimSpace(cfg.Version.Static)
+		if resolved == "" {
+			if sourceErr == nil {
+				return "", errors.New("version.static 不能为空")
+			}
+			return "", fmt.Errorf("%w; version.static 不能为空", sourceErr)
+		}
+		return resolved, nil
+	default:
+		if sourceErr == nil {
+			return "", fmt.Errorf("不支持的 version.fallback: %s", cfg.Version.Fallback)
+		}
+		return "", fmt.Errorf("%w; 不支持的 version.fallback: %s", sourceErr, cfg.Version.Fallback)
+	}
 }

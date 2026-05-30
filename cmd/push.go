@@ -16,7 +16,7 @@ var pushCmd = &cobra.Command{
 	Use:   "push",
 	Short: "发布产物",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ver, err := internal.ResolveVersion(pushVersion)
+		ver, err := internal.ResolveVersion(cfg, pushVersion)
 		if err != nil {
 			return err
 		}
@@ -25,7 +25,7 @@ var pushCmd = &cobra.Command{
 			return err
 		}
 		for _, p := range profiles {
-			if err := doPush(ver, p); err != nil {
+			if err := executePublishProfile(ver, p); err != nil {
 				return err
 			}
 		}
@@ -44,7 +44,7 @@ func doPush(version string, profile internal.Profile) error {
 	case "registry":
 		return doRegistryPush(version, profile)
 	case "scp":
-		return doSCPPush(profile)
+		return doSCPPush(profile, version)
 	case "none":
 		internal.PrintInfo("当前配置未启用发布阶段")
 		return nil
@@ -99,15 +99,28 @@ func doRegistryPush(version string, profile internal.Profile) error {
 	return nil
 }
 
-func doSCPPush(profile internal.Profile) error {
+// doSCPPush 按当前 profile 渲染 scp 发布目标并上传产物。
+func doSCPPush(profile internal.Profile, version string) error {
+	ctx := internal.NewRenderContext(cfg, profile, version)
 	name := internal.FormatProfileName(profile)
 	nameLabel := ""
 	if name != "" {
 		nameLabel = " " + internal.BoldStyle.Render("["+name+"]")
 	}
 
-	local := cfg.Publish.SCP.Local
-	remote := fmt.Sprintf("%s:%s", cfg.Publish.SCP.Host, cfg.Publish.SCP.Remote)
+	local, err := ctx.RenderString(cfg.Publish.SCP.Local)
+	if err != nil {
+		return err
+	}
+	host, err := ctx.RenderString(cfg.Publish.SCP.Host)
+	if err != nil {
+		return err
+	}
+	remotePath, err := ctx.RenderString(cfg.Publish.SCP.Remote)
+	if err != nil {
+		return err
+	}
+	remote := fmt.Sprintf("%s:%s", host, remotePath)
 	fmt.Printf("  %s SCP 上传%s  → %s\n",
 		internal.StepStyle.Render("▸"),
 		nameLabel,
