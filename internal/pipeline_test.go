@@ -97,6 +97,49 @@ func TestExecuteVerifyHTTP(t *testing.T) {
 	}
 }
 
+// TestExecuteVerifyHTTPFailureWrapsContext 验证 verify.http 失败时会保留 driver 和目标 URL 上下文。
+func TestExecuteVerifyHTTPFailureWrapsContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	cfg := &Config{}
+	cfg.applyDefaults()
+	cfg.Features.Verify = true
+	cfg.Verify.Driver = "http"
+	cfg.Verify.HTTP.URL = server.URL
+	cfg.Verify.HTTP.Attempts = 1
+	cfg.Verify.HTTP.IntervalSeconds = 1
+	cfg.Verify.HTTP.TimeoutSeconds = 1
+
+	err := ExecuteVerify(cfg, Profile{}, "v1.0.0")
+	if err == nil {
+		t.Fatal("ExecuteVerify(http) should fail when the endpoint is unhealthy")
+	}
+	if !strings.Contains(err.Error(), "verify.http 失败") || !strings.Contains(err.Error(), server.URL) {
+		t.Fatalf("ExecuteVerify(http) error should contain verify driver and url, got: %v", err)
+	}
+}
+
+// TestExecuteVerifyHTTPRejectsRenderedBlankURL 验证模板渲染为空时不会被静默跳过。
+func TestExecuteVerifyHTTPRejectsRenderedBlankURL(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	cfg.Features.Verify = true
+	cfg.Verify.Driver = "http"
+	cfg.Verify.HTTP.URL = "{{ vars.empty_url }}"
+	cfg.Vars = map[string]string{"empty_url": ""}
+
+	err := ExecuteVerify(cfg, Profile{}, "v1.0.0")
+	if err == nil {
+		t.Fatal("ExecuteVerify(http) should fail when rendered url is blank")
+	}
+	if !strings.Contains(err.Error(), "verify.http.url 渲染结果不能为空") {
+		t.Fatalf("ExecuteVerify(http) error should mention blank rendered url, got: %v", err)
+	}
+}
+
 // TestUsesVerifyStage_LegacyHealthcheck 验证 legacy deploy.healthcheck 仍会触发 verify 阶段。
 func TestUsesVerifyStage_LegacyHealthcheck(t *testing.T) {
 	cfg := &Config{}

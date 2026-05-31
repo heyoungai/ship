@@ -52,8 +52,13 @@ func SplitCSV(input string) []string {
 }
 
 // BuildxOutputArgs 返回当前分阶段构建流程所需的 buildx 输出参数。
-// 这里显式使用 --load，把镜像装载回本地 Docker，后续 tag/push 才有正确输入。
-func BuildxOutputArgs(platforms string) ([]string, error) {
+// 当前 build → tag → push 流程依赖本地 Docker 镜像作为阶段输入，因此必须启用 --load。
+func BuildxOutputArgs(platforms string, load bool) ([]string, error) {
+	if !load {
+		return nil, fmt.Errorf(
+			"当前 build → tag → push 分阶段流程需要把镜像加载到本地 Docker，因此 build.docker.load 必须为 true",
+		)
+	}
 	if len(SplitCSV(platforms)) != 1 {
 		return nil, fmt.Errorf(
 			"当前 build → tag → push 流程需要把镜像加载到本地 Docker，因此仅支持单平台构建；当前 platforms=%q",

@@ -198,46 +198,79 @@ func ExecuteVerify(cfg *Config, profile Profile, version string) error {
 		if cfg.Deploy.Healthcheck.Enabled() {
 			url, err := ctx.RenderString(cfg.Deploy.Healthcheck.URL)
 			if err != nil {
-				return err
+				return fmt.Errorf("渲染 deploy.healthcheck.url 失败: %w", err)
 			}
-			return WaitForHealthcheck(DeployHealthcheck{
+			if strings.TrimSpace(url) == "" {
+				return fmt.Errorf("deploy.healthcheck.url 渲染结果不能为空")
+			}
+			healthcheck := DeployHealthcheck{
 				URL:             url,
 				ExpectedStatus:  cfg.Deploy.Healthcheck.ExpectedStatus,
 				Attempts:        cfg.Deploy.Healthcheck.Attempts,
 				IntervalSeconds: cfg.Deploy.Healthcheck.IntervalSeconds,
 				TimeoutSeconds:  cfg.Deploy.Healthcheck.TimeoutSeconds,
-			})
+			}
+			PrintInfo(fmt.Sprintf("verify legacy healthcheck: url=%s expected=%d attempts=%d interval=%ds timeout=%ds", healthcheck.URL, healthcheck.ExpectedStatus, healthcheck.Attempts, healthcheck.IntervalSeconds, healthcheck.TimeoutSeconds))
+			if err := WaitForHealthcheck(healthcheck); err != nil {
+				return fmt.Errorf("legacy deploy.healthcheck 失败: %w", err)
+			}
+			return nil
 		}
 		return nil
 	case "http":
 		url, err := ctx.RenderString(cfg.Verify.HTTP.URL)
 		if err != nil {
-			return err
+			return fmt.Errorf("渲染 verify.http.url 失败: %w", err)
 		}
+		if strings.TrimSpace(url) == "" {
+			return fmt.Errorf("verify.http.url 渲染结果不能为空")
+		}
+		healthcheck := VerifyHTTPConfigToHealthcheck(cfg.Verify.HTTP, url)
+		PrintInfo(fmt.Sprintf("verify http: url=%s expected=%d attempts=%d interval=%ds timeout=%ds", healthcheck.URL, healthcheck.ExpectedStatus, healthcheck.Attempts, healthcheck.IntervalSeconds, healthcheck.TimeoutSeconds))
 		ProgressSub(fmt.Sprintf("verify http %s", url))
-		return WaitForHealthcheck(VerifyHTTPConfigToHealthcheck(cfg.Verify.HTTP, url))
+		if err := WaitForHealthcheck(healthcheck); err != nil {
+			return fmt.Errorf("verify.http 失败: %w", err)
+		}
+		return nil
 	case "ssh":
 		host, err := ctx.RenderString(cfg.Verify.SSH.Host)
 		if err != nil {
-			return err
+			return fmt.Errorf("渲染 verify.ssh.host 失败: %w", err)
+		}
+		if strings.TrimSpace(host) == "" {
+			return fmt.Errorf("verify.ssh.host 渲染结果不能为空")
 		}
 		command, err := ctx.RenderString(cfg.Verify.SSH.Command)
 		if err != nil {
-			return err
+			return fmt.Errorf("渲染 verify.ssh.command 失败: %w", err)
 		}
+		if strings.TrimSpace(command) == "" {
+			return fmt.Errorf("verify.ssh.command 渲染结果不能为空")
+		}
+		PrintInfo(fmt.Sprintf("verify ssh: host=%s command=%s", host, command))
 		ProgressSub(fmt.Sprintf("verify ssh %s", host))
-		return RunCmd([]string{"ssh", host, command}, fmt.Sprintf("verify ssh %s", host))
+		if err := RunCmd([]string{"ssh", host, command}, fmt.Sprintf("verify ssh %s", host)); err != nil {
+			return fmt.Errorf("verify.ssh 失败: host=%s command=%s: %w", host, command, err)
+		}
+		return nil
 	case "command":
 		run, err := ctx.RenderString(cfg.Verify.Command.Run)
 		if err != nil {
-			return err
+			return fmt.Errorf("渲染 verify.command.run 失败: %w", err)
+		}
+		if strings.TrimSpace(run) == "" {
+			return fmt.Errorf("verify.command.run 渲染结果不能为空")
 		}
 		args, err := ShellCommandArgsWithMode(cfg.Verify.Command.Shell, run)
 		if err != nil {
-			return err
+			return fmt.Errorf("解析 verify.command.shell 失败: %w", err)
 		}
+		PrintInfo(fmt.Sprintf("verify command: run=%s shell=%s", run, cfg.Verify.Command.Shell))
 		ProgressSub("verify command")
-		return RunCmd(args, "verify command")
+		if err := RunCmd(args, "verify command"); err != nil {
+			return fmt.Errorf("verify.command 失败: run=%s: %w", run, err)
+		}
+		return nil
 	default:
 		return fmt.Errorf("当前不支持的 verify.driver: %s", cfg.Verify.Driver)
 	}

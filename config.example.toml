@@ -59,9 +59,9 @@ platforms = ["linux/amd64"]
 env_file = "./.env.local"
 local_build = "bun run build"
 build_args_from_env = true
-load = true
+load = true                    # 当前分阶段 build -> tag -> push 流程中必须为 true
 latest_on_default_profile = true
-disable_buildkit = false
+disable_buildkit = false       # 当前 docker driver 固定使用 buildx，暂不支持 true
 cache_bust = false
 
 # 需要显式写死的 build args 时可使用：
@@ -154,6 +154,9 @@ driver = "compose"              # compose | binary-install | ssh | none
 [deploy.compose]
 host = "deali.cn"               # SSH Host（~/.ssh/config 别名或 user@ip）
 path = "/home/deali/projects/home"
+local_file = "./deploy/compose.prod.yaml" # 可选：上传本地 compose 文件到远端
+remote_file = "compose.yaml"               # 可选：远端文件名，默认继承 local_file 的文件名
+local_env_file = "./deploy/.env.prod"      # 可选：先上传本地 env 文件，再写入 tag_key 对应版本
 env_file = ".env"
 tag_key = "{{ vars.remote_tag_key }}"
 up = "docker compose --env-file ./.env up -d --remove-orphans"

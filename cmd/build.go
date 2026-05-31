@@ -124,9 +124,9 @@ func doDockerBuild(profile internal.Profile, envFile, version string) error {
 		nameLabel,
 		internal.DimStyle.Render(fmt.Sprintf("(%d build-args)", argCount)))
 
-	tag := internal.ImageTag("latest", profile)
+	tag := cfg.BuildSourceTag(profile)
 	internal.ProgressSub(cfg.ImageRef(tag))
-	outputArgs, err := internal.BuildxOutputArgs(cfg.Build.Platforms)
+	outputArgs, err := internal.BuildxOutputArgs(cfg.Build.Platforms, cfg.Build.Docker.Load)
 	if err != nil {
 		return err
 	}
@@ -135,6 +135,9 @@ func doDockerBuild(profile internal.Profile, envFile, version string) error {
 		"docker", "buildx", "build",
 		"--platform", cfg.Build.Platforms,
 		"--file", renderedDockerfile,
+	}
+	if cfg.Build.Docker.CacheBust {
+		args = append(args, "--no-cache")
 	}
 	args = append(args, outputArgs...)
 	args = append(args, buildArgs...)

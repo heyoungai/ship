@@ -3,6 +3,7 @@ package internal
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -39,5 +40,8 @@ func TestWaitForHealthcheck_Failure(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("WaitForHealthcheck should fail when the endpoint never becomes healthy")
+	}
+	if !strings.Contains(err.Error(), server.URL) || !strings.Contains(err.Error(), "attempts=2") || !strings.Contains(err.Error(), "status=503") {
+		t.Fatalf("WaitForHealthcheck error should contain url/attempts/status, got: %v", err)
 	}
 }

@@ -48,21 +48,24 @@ func WaitForHealthcheck(h DeployHealthcheck) error {
 	var lastErr error
 
 	for attempt := 1; attempt <= h.Attempts; attempt++ {
+		PrintInfo(fmt.Sprintf("healthcheck attempt %d/%d: %s", attempt, h.Attempts, h.URL))
 		resp, err := client.Get(h.URL)
 		if err == nil {
 			_ = resp.Body.Close()
 			if resp.StatusCode == h.ExpectedStatus {
+				PrintSuccess(fmt.Sprintf("healthcheck ready: %s status=%d", h.URL, resp.StatusCode))
 				return nil
 			}
-			lastErr = fmt.Errorf("状态码=%d，期望=%d", resp.StatusCode, h.ExpectedStatus)
+			lastErr = fmt.Errorf("attempt=%d/%d status=%d expected=%d", attempt, h.Attempts, resp.StatusCode, h.ExpectedStatus)
 		} else {
-			lastErr = err
+			lastErr = fmt.Errorf("attempt=%d/%d request error: %w", attempt, h.Attempts, err)
 		}
+		PrintWarning(fmt.Sprintf("healthcheck pending: %v", lastErr))
 
 		if attempt < h.Attempts {
 			time.Sleep(time.Duration(h.IntervalSeconds) * time.Second)
 		}
 	}
 
-	return fmt.Errorf("健康检查失败: %w", lastErr)
+	return fmt.Errorf("健康检查失败: url=%s expected=%d attempts=%d timeout=%ds last_error=%w", h.URL, h.ExpectedStatus, h.Attempts, h.TimeoutSeconds, lastErr)
 }

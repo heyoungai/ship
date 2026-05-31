@@ -153,11 +153,14 @@ type PublishConfig struct {
 
 // DeployComposeConfig 定义 compose 部署配置。
 type DeployComposeConfig struct {
-	Host    string `toml:"host"`
-	Path    string `toml:"path"`
-	EnvFile string `toml:"env_file"`
-	TagKey  string `toml:"tag_key"`
-	Up      string `toml:"up"`
+	Host         string `toml:"host"`
+	Path         string `toml:"path"`
+	LocalFile    string `toml:"local_file"`
+	RemoteFile   string `toml:"remote_file"`
+	LocalEnvFile string `toml:"local_env_file"`
+	EnvFile      string `toml:"env_file"`
+	TagKey       string `toml:"tag_key"`
+	Up           string `toml:"up"`
 }
 
 // DeployBinaryInstallConfig 定义二进制安装部署配置。
@@ -508,6 +511,12 @@ func (c *Config) validateV2(missing *[]string) {
 		if len(c.Build.Docker.Platforms) == 0 {
 			*missing = append(*missing, "build.docker.platforms")
 		}
+		if !c.Build.Docker.Load {
+			*missing = append(*missing, "build.docker.load 当前分阶段流程中必须为 true")
+		}
+		if c.Build.Docker.DisableBuildkit {
+			*missing = append(*missing, "build.docker.disable_buildkit 当前 build.driver = docker 时暂不支持")
+		}
 	case "go-binary":
 		if c.Build.Go.Main == "" {
 			*missing = append(*missing, "build.go.main")
@@ -528,6 +537,8 @@ func (c *Config) validateV2(missing *[]string) {
 		case "registry":
 			if len(c.Publish.Registry.Targets) == 0 {
 				*missing = append(*missing, "publish.registry.targets")
+			} else {
+				c.validateRegistryTargets(missing)
 			}
 		case "scp":
 			if c.Publish.SCP.Local == "" {
@@ -548,11 +559,23 @@ func (c *Config) validateV2(missing *[]string) {
 	if c.Features.Deploy {
 		switch c.Deploy.Driver {
 		case "compose":
-			if c.Deploy.Compose.Host == "" {
+			if strings.TrimSpace(c.Deploy.Compose.Host) == "" {
 				*missing = append(*missing, "deploy.compose.host")
 			}
-			if c.Deploy.Compose.Path == "" {
+			if strings.TrimSpace(c.Deploy.Compose.Path) == "" {
 				*missing = append(*missing, "deploy.compose.path")
+			}
+			if strings.TrimSpace(c.Deploy.Compose.EnvFile) == "" {
+				*missing = append(*missing, "deploy.compose.env_file")
+			}
+			if strings.TrimSpace(c.Deploy.Compose.TagKey) == "" {
+				*missing = append(*missing, "deploy.compose.tag_key")
+			}
+			if strings.TrimSpace(c.Deploy.Compose.Up) == "" {
+				*missing = append(*missing, "deploy.compose.up")
+			}
+			if strings.TrimSpace(c.Deploy.Compose.RemoteFile) != "" && strings.TrimSpace(c.Deploy.Compose.LocalFile) == "" {
+				*missing = append(*missing, "deploy.compose.local_file")
 			}
 		case "binary-install":
 			if c.Deploy.BinaryInstall.Host == "" {
@@ -601,6 +624,28 @@ func (c *Config) validateV2(missing *[]string) {
 	}
 }
 
+func (c *Config) validateRegistryTargets(missing *[]string) {
+	for index, target := range c.Publish.Registry.Targets {
+		prefix := fmt.Sprintf("publish.registry.targets[%d]", index)
+		switch target.Type {
+		case "dockerhub", "private":
+		case "":
+			*missing = append(*missing, prefix+".type")
+		default:
+			*missing = append(*missing, prefix+".type 仅支持 dockerhub | private")
+		}
+		if target.Type == "private" && target.URL == "" {
+			*missing = append(*missing, prefix+".url")
+		}
+		if target.Namespace == "" {
+			*missing = append(*missing, prefix+".namespace")
+		}
+		if target.Image == "" {
+			*missing = append(*missing, prefix+".image")
+		}
+	}
+}
+
 // DefaultProfile 返回默认 profile（无 matrix 时的单次构建）。
 func (c *Config) DefaultProfile() Profile {
 	for _, p := range c.Matrix {
@@ -644,6 +689,18 @@ func ImageTag(version string, profile Profile) string {
 		return version
 	}
 	return fmt.Sprintf("%s-%s", version, profile.Name)
+}
+
+// BuildSourceTag 返回 docker build 阶段产出的本地镜像 tag。
+// 默认 profile 在启用 latest_on_default_profile 时使用 latest，否则退化到稳定的 build-default。
+func (c *Config) BuildSourceTag(profile Profile) string {
+	if profile.Name == "" {
+		if c.Build.Docker.LatestOnDefaultProfile {
+			return "latest"
+		}
+		return "build-default"
+	}
+	return fmt.Sprintf("latest-%s", profile.Name)
 }
 
 // RegistryTargets 生成注册表镜像引用列表。
@@ -746,6 +803,11 @@ func (c *Config) UsesDeployStage() bool {
 // UsesVerifyStage 返回当前配置是否需要 verify 阶段。
 func (c *Config) UsesVerifyStage() bool {
 	return (c.Features.Verify && c.Verify.Driver != "none") || c.Deploy.Healthcheck.Enabled()
+}
+
+// ShouldTagLatest 返回当前 profile 是否需要额外维护远端 latest 标签。
+func (c *Config) ShouldTagLatest(profile Profile) bool {
+	return profile.Default && c.Publish.Registry.TagLatestOnDefaultProfile
 }
 
 // StringSliceContains 检查字符串切片是否包含指定元素。

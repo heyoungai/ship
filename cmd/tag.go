@@ -45,7 +45,7 @@ func doTag(version string, profile internal.Profile) error {
 		return nil
 	}
 
-	localTag := internal.ImageTag("latest", profile)
+	localTag := cfg.BuildSourceTag(profile)
 	remoteTag := internal.ImageTag(version, profile)
 	name := internal.FormatProfileName(profile)
 	nameLabel := ""
@@ -67,7 +67,7 @@ func doTag(version string, profile internal.Profile) error {
 		}
 	}
 
-	if profile.Default {
+	if cfg.ShouldTagLatest(profile) {
 		for _, target := range cfg.RegistryTargets("latest") {
 			fmt.Printf("  %s Tag%s  %s\n",
 				internal.StepStyle.Render("▸"),

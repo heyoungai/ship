@@ -80,7 +80,7 @@ func doRegistryPush(version string, profile internal.Profile) error {
 		}
 	}
 
-	if profile.Default && cfg.Publish.Registry.TagLatestOnDefaultProfile {
+	if cfg.ShouldTagLatest(profile) {
 		for _, target := range cfg.RegistryTargets("latest") {
 			fmt.Printf("  %s Push%s  %s\n",
 				internal.StepStyle.Render("▸"),

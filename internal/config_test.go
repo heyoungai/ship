@@ -107,6 +107,49 @@ func TestImageRef(t *testing.T) {
 	}
 }
 
+func TestBuildSourceTag_DefaultLatestEnabled(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	got := cfg.BuildSourceTag(Profile{Name: "", Default: true})
+	if got != "latest" {
+		t.Fatalf("BuildSourceTag(default latest enabled) = %q, want latest", got)
+	}
+}
+
+func TestBuildSourceTag_DefaultLatestDisabled(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	cfg.Build.Docker.LatestOnDefaultProfile = false
+	got := cfg.BuildSourceTag(Profile{Name: "", Default: true})
+	if got != "build-default" {
+		t.Fatalf("BuildSourceTag(default latest disabled) = %q, want build-default", got)
+	}
+}
+
+func TestBuildSourceTag_NamedProfile(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	got := cfg.BuildSourceTag(Profile{Name: "brand-a"})
+	if got != "latest-brand-a" {
+		t.Fatalf("BuildSourceTag(named) = %q, want latest-brand-a", got)
+	}
+}
+
+func TestShouldTagLatest(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	if !cfg.ShouldTagLatest(Profile{Name: "", Default: true}) {
+		t.Fatal("ShouldTagLatest(default) should be true when tag_latest_on_default_profile=true")
+	}
+	cfg.Publish.Registry.TagLatestOnDefaultProfile = false
+	if cfg.ShouldTagLatest(Profile{Name: "", Default: true}) {
+		t.Fatal("ShouldTagLatest(default) should be false when tag_latest_on_default_profile=false")
+	}
+	if cfg.ShouldTagLatest(Profile{Name: "brand-a"}) {
+		t.Fatal("ShouldTagLatest(named profile) should be false")
+	}
+}
+
 // ── MergeEnv ────────────────────────────────────────────────────
 
 func TestMergeEnv_Merge(t *testing.T) {
@@ -376,7 +419,7 @@ func TestValidate_Success(t *testing.T) {
 // ── BuildxOutputArgs / ShellEscape ───────────────────────────────
 
 func TestBuildxOutputArgs_SinglePlatform(t *testing.T) {
-	args, err := BuildxOutputArgs("linux/amd64")
+	args, err := BuildxOutputArgs("linux/amd64", true)
 	if err != nil {
 		t.Fatalf("BuildxOutputArgs(single) error: %v", err)
 	}
@@ -386,9 +429,16 @@ func TestBuildxOutputArgs_SinglePlatform(t *testing.T) {
 }
 
 func TestBuildxOutputArgs_MultiPlatform(t *testing.T) {
-	_, err := BuildxOutputArgs("linux/amd64,linux/arm64")
+	_, err := BuildxOutputArgs("linux/amd64,linux/arm64", true)
 	if err == nil {
 		t.Fatal("BuildxOutputArgs should reject multi-platform staged build")
+	}
+}
+
+func TestBuildxOutputArgs_LoadDisabled(t *testing.T) {
+	_, err := BuildxOutputArgs("linux/amd64", false)
+	if err == nil {
+		t.Fatal("BuildxOutputArgs should reject load=false in staged build flow")
 	}
 }
 
@@ -432,7 +482,12 @@ driver = "compose"
 [deploy.compose]
 host = "deali.cn"
 path = "/home/deali/projects/home"
+local_file = "./deploy/compose.yml"
+remote_file = "compose.yaml"
+local_env_file = "./deploy/.env.prod"
 `,
+		"deploy/compose.yml": "services:\n  app:\n    image: home:latest\n",
+		"deploy/.env.prod":   "APP_IMAGE_TAG=latest\n",
 	}, func() {
 		cfg, err := LoadConfig("")
 		if err != nil {
@@ -467,6 +522,15 @@ path = "/home/deali/projects/home"
 		}
 		if cfg.Deploy.Compose.TagKey != "APP_IMAGE_TAG" {
 			t.Fatalf("cfg.Deploy.Compose.TagKey = %q, want APP_IMAGE_TAG", cfg.Deploy.Compose.TagKey)
+		}
+		if cfg.Deploy.Compose.LocalFile != "./deploy/compose.yml" {
+			t.Fatalf("cfg.Deploy.Compose.LocalFile = %q, want ./deploy/compose.yml", cfg.Deploy.Compose.LocalFile)
+		}
+		if cfg.Deploy.Compose.RemoteFile != "compose.yaml" {
+			t.Fatalf("cfg.Deploy.Compose.RemoteFile = %q, want compose.yaml", cfg.Deploy.Compose.RemoteFile)
+		}
+		if cfg.Deploy.Compose.LocalEnvFile != "./deploy/.env.prod" {
+			t.Fatalf("cfg.Deploy.Compose.LocalEnvFile = %q, want ./deploy/.env.prod", cfg.Deploy.Compose.LocalEnvFile)
 		}
 	})
 }
@@ -560,5 +624,185 @@ func TestValidate_V2MissingPublishTargets(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "publish.registry.targets") {
 		t.Fatalf("Validate error should mention publish.registry.targets, got: %v", err)
+	}
+}
+
+func TestValidate_V2RegistryTargetRequiresPrivateURL(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	cfg.Schema = 2
+	cfg.Build.Driver = "docker"
+	cfg.Build.Docker.Image = "home"
+	cfg.Publish.Driver = "registry"
+	cfg.Publish.Registry.Targets = []Registry{{Type: "private", Namespace: "deali", Image: "home"}}
+	cfg.Features.Deploy = false
+	cfg.Features.Verify = false
+	cfg.normalize()
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate should fail when private registry target has no url")
+	}
+	if !strings.Contains(err.Error(), "publish.registry.targets[0].url") {
+		t.Fatalf("Validate error should mention publish.registry.targets[0].url, got: %v", err)
+	}
+}
+
+func TestValidate_V2RegistryTargetRequiresNamespaceAndImage(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	cfg.Schema = 2
+	cfg.Build.Driver = "docker"
+	cfg.Build.Docker.Image = "home"
+	cfg.Publish.Driver = "registry"
+	cfg.Publish.Registry.Targets = []Registry{{Type: "dockerhub"}}
+	cfg.Features.Deploy = false
+	cfg.Features.Verify = false
+	cfg.normalize()
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate should fail when registry target misses namespace/image")
+	}
+	if !strings.Contains(err.Error(), "publish.registry.targets[0].namespace") || !strings.Contains(err.Error(), "publish.registry.targets[0].image") {
+		t.Fatalf("Validate error should mention namespace/image, got: %v", err)
+	}
+}
+
+func TestValidate_V2RegistryTargetRejectsUnknownType(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	cfg.Schema = 2
+	cfg.Build.Driver = "docker"
+	cfg.Build.Docker.Image = "home"
+	cfg.Publish.Driver = "registry"
+	cfg.Publish.Registry.Targets = []Registry{{Type: "ghcr", Namespace: "deali", Image: "home"}}
+	cfg.Features.Deploy = false
+	cfg.Features.Verify = false
+	cfg.normalize()
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate should fail when registry target type is unsupported")
+	}
+	if !strings.Contains(err.Error(), "publish.registry.targets[0].type 仅支持 dockerhub | private") {
+		t.Fatalf("Validate error should mention unsupported registry type, got: %v", err)
+	}
+}
+
+func TestValidate_V2DockerRejectsLoadDisabled(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	cfg.Schema = 2
+	cfg.Build.Driver = "docker"
+	cfg.Build.Docker.Image = "home"
+	cfg.Build.Docker.Load = false
+	cfg.Publish.Driver = "registry"
+	cfg.Publish.Registry.Targets = []Registry{{Type: "dockerhub", Namespace: "deali", Image: "home"}}
+	cfg.Features.Deploy = false
+	cfg.Features.Verify = false
+	cfg.normalize()
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate should fail when build.docker.load=false")
+	}
+	if !strings.Contains(err.Error(), "build.docker.load 当前分阶段流程中必须为 true") {
+		t.Fatalf("Validate error should mention build.docker.load, got: %v", err)
+	}
+}
+
+func TestValidate_V2DockerRejectsDisableBuildkit(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	cfg.Schema = 2
+	cfg.Build.Driver = "docker"
+	cfg.Build.Docker.Image = "home"
+	cfg.Build.Docker.DisableBuildkit = true
+	cfg.Publish.Driver = "registry"
+	cfg.Publish.Registry.Targets = []Registry{{Type: "dockerhub", Namespace: "deali", Image: "home"}}
+	cfg.Features.Deploy = false
+	cfg.Features.Verify = false
+	cfg.normalize()
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate should fail when build.docker.disable_buildkit=true")
+	}
+	if !strings.Contains(err.Error(), "build.docker.disable_buildkit 当前 build.driver = docker 时暂不支持") {
+		t.Fatalf("Validate error should mention build.docker.disable_buildkit, got: %v", err)
+	}
+}
+
+func TestValidate_V2ComposeRequiresTagKeyAndUp(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	cfg.Schema = 2
+	cfg.Build.Driver = "command"
+	cfg.Build.Command.Run = "echo ok"
+	cfg.Publish.Driver = "none"
+	cfg.Features.Publish = false
+	cfg.Features.Verify = false
+	cfg.Deploy.Driver = "compose"
+	cfg.Deploy.Compose.Host = "deali.cn"
+	cfg.Deploy.Compose.Path = "/srv/app"
+	cfg.Deploy.Compose.TagKey = "   "
+	cfg.Deploy.Compose.Up = "   "
+	cfg.normalize()
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate should fail when compose tag_key/up are blank")
+	}
+	if !strings.Contains(err.Error(), "deploy.compose.tag_key") || !strings.Contains(err.Error(), "deploy.compose.up") {
+		t.Fatalf("Validate error should mention deploy.compose.tag_key and deploy.compose.up, got: %v", err)
+	}
+}
+
+func TestValidate_V2ComposeRequiresEnvFile(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	cfg.Schema = 2
+	cfg.Build.Driver = "command"
+	cfg.Build.Command.Run = "echo ok"
+	cfg.Publish.Driver = "none"
+	cfg.Features.Publish = false
+	cfg.Features.Verify = false
+	cfg.Deploy.Driver = "compose"
+	cfg.Deploy.Compose.Host = "deali.cn"
+	cfg.Deploy.Compose.Path = "/srv/app"
+	cfg.Deploy.Compose.EnvFile = "   "
+	cfg.normalize()
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate should fail when compose env_file is blank")
+	}
+	if !strings.Contains(err.Error(), "deploy.compose.env_file") {
+		t.Fatalf("Validate error should mention deploy.compose.env_file, got: %v", err)
+	}
+}
+
+func TestValidate_V2ComposeRemoteFileRequiresLocalFile(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	cfg.Schema = 2
+	cfg.Build.Driver = "command"
+	cfg.Build.Command.Run = "echo ok"
+	cfg.Publish.Driver = "none"
+	cfg.Features.Publish = false
+	cfg.Features.Verify = false
+	cfg.Deploy.Driver = "compose"
+	cfg.Deploy.Compose.Host = "deali.cn"
+	cfg.Deploy.Compose.Path = "/srv/app"
+	cfg.Deploy.Compose.RemoteFile = "compose.yaml"
+	cfg.normalize()
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate should fail when compose remote_file is set without local_file")
+	}
+	if !strings.Contains(err.Error(), "deploy.compose.local_file") {
+		t.Fatalf("Validate error should mention deploy.compose.local_file, got: %v", err)
 	}
 }

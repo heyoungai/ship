@@ -89,6 +89,9 @@ driver = "compose"
 [deploy.compose]
 host = "prod-server"
 path = "/home/team/myapp"
+local_file = "./deploy/compose.prod.yaml"
+remote_file = "compose.yaml"
+local_env_file = "./deploy/.env.prod"
 env_file = ".env"
 tag_key = "APP_IMAGE_TAG"
 up = "docker compose --env-file ./.env up -d --remove-orphans"
@@ -103,6 +106,8 @@ attempts = 20
 interval_seconds = 3
 timeout_seconds = 5
 ```
+
+推荐把远端 `compose.yaml` 和 `.env` 都当成 ship 可同步的发布资产：首次部署时由 ship 自动创建目录并上传，后续部署继续复用同一套入口更新 tag 并执行 compose。
 
 ## 4. 默认操作方式
 
