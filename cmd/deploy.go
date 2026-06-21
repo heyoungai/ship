@@ -83,6 +83,12 @@ func doComposeDeploy(version string, profile internal.Profile) error {
 	if err != nil {
 		return fmt.Errorf("渲染 deploy.compose.env_file 失败: %w", err)
 	}
+
+	// 当 env_file 不是默认的 ".env" 且 up 命令中未显式包含 --env-file 时，
+	// 自动注入 --env-file 参数，确保 docker compose 读取正确的环境变量文件。
+	if envFile != ".env" && !strings.Contains(up, "--env-file") {
+		up = fmt.Sprintf("docker compose --env-file ./%s up -d", envFile)
+	}
 	localFile, err := renderOptionalComposeValue(ctx, cfg.Deploy.Compose.LocalFile, "deploy.compose.local_file")
 	if err != nil {
 		return err
