@@ -251,6 +251,7 @@ func generateConfig(info map[string]string) string {
 	b.WriteString("# host = \"your-server\"                       # SSH Host\n")
 	b.WriteString(fmt.Sprintf("# path = %q  # 远程项目路径\n", "/home/user/projects/"+imageName))
 	b.WriteString("# env_file = \".env\"\n")
+	b.WriteString("# auto_env_file = true              # 自动注入 --env-file 到 up 命令\n")
 	b.WriteString("# tag_key = \"APP_IMAGE_TAG\"\n")
 	b.WriteString("# up = \"docker compose --env-file ./.env up -d --remove-orphans\"\n")
 	b.WriteString("\n")

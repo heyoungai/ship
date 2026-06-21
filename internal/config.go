@@ -159,6 +159,7 @@ type DeployComposeConfig struct {
 	RemoteFile   string `toml:"remote_file"`
 	LocalEnvFile string `toml:"local_env_file"`
 	EnvFile      string `toml:"env_file"`
+	AutoEnvFile  bool   `toml:"auto_env_file"` // 当 env_file 非默认值时自动注入 --env-file 到 up 命令
 	TagKey       string `toml:"tag_key"`
 	Up           string `toml:"up"`
 }
@@ -312,6 +313,7 @@ func (c *Config) applyDefaults() {
 
 	c.Deploy.Driver = "none"
 	c.Deploy.Compose.EnvFile = ".env"
+	c.Deploy.Compose.AutoEnvFile = true
 	c.Deploy.Compose.TagKey = "APP_IMAGE_TAG"
 	c.Deploy.Compose.Up = "docker compose up -d"
 	c.Deploy.Healthcheck.ApplyDefaults()

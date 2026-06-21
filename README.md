@@ -113,6 +113,18 @@ task build
 
 `deploy.compose.local_file` 和 `deploy.compose.local_env_file` 为可选项；启用后 ship 会先确保远端目录存在，再通过 `scp` 上传本地 compose / env 文件，然后继续更新 `tag_key` 和执行 `docker compose up`。
 
+### env_file 配置说明
+
+`deploy.compose` 下有三个与环境文件相关的字段：
+
+| 字段 | 说明 | 默认值 |
+|------|------|--------|
+| `env_file` | 远端 env 文件名，用于写入镜像 tag 并作为 compose 的环境变量来源 | `.env` |
+| `local_env_file` | 本地 env 文件路径，部署前通过 scp 上传到远端（可选） | 空 |
+| `auto_env_file` | 当 `env_file` 不是 `.env` 时，自动将 `--env-file` 注入 `up` 命令 | `true` |
+
+`auto_env_file` 是一个便捷特性：当你将 `env_file` 设置为 `.env.prod` 等非默认值时，ship 会自动在 `up` 命令中注入 `--env-file ./.env.prod`，无需手动修改 `up` 命令。如果你的 `up` 命令已经显式包含 `--env-file`，或者你希望完全手动控制，可以设置 `auto_env_file = false` 关闭此行为。
+
 ### 简单项目（无矩阵）
 
 ```toml
@@ -153,6 +165,7 @@ local_file = "./deploy/compose.prod.yaml"
 remote_file = "compose.yaml"
 local_env_file = "./deploy/.env.prod"
 env_file = ".env"
+auto_env_file = true
 tag_key = "APP_IMAGE_TAG"
 up = "docker compose --env-file ./.env up -d --remove-orphans"
 

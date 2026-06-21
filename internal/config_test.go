@@ -532,6 +532,9 @@ local_env_file = "./deploy/.env.prod"
 		if cfg.Deploy.Compose.LocalEnvFile != "./deploy/.env.prod" {
 			t.Fatalf("cfg.Deploy.Compose.LocalEnvFile = %q, want ./deploy/.env.prod", cfg.Deploy.Compose.LocalEnvFile)
 		}
+		if !cfg.Deploy.Compose.AutoEnvFile {
+			t.Fatal("cfg.Deploy.Compose.AutoEnvFile should default to true")
+		}
 	})
 }
 
@@ -805,4 +808,103 @@ func TestValidate_V2ComposeRemoteFileRequiresLocalFile(t *testing.T) {
 	if !strings.Contains(err.Error(), "deploy.compose.local_file") {
 		t.Fatalf("Validate error should mention deploy.compose.local_file, got: %v", err)
 	}
+}
+
+// ── AutoEnvFile ─────────────────────────────────────────────────
+
+func TestAutoEnvFile_DefaultTrue(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	if !cfg.Deploy.Compose.AutoEnvFile {
+		t.Fatal("AutoEnvFile should default to true")
+	}
+}
+
+func TestAutoEnvFile_LoadFromToml_False(t *testing.T) {
+	withTempConfigDir(t, map[string]string{
+		"ship.toml": `
+schema = 2
+
+[build]
+driver = "docker"
+
+[build.docker]
+image = "home"
+dockerfile = "./Dockerfile"
+platforms = ["linux/amd64"]
+
+[publish]
+driver = "registry"
+
+[[publish.registry.targets]]
+type = "dockerhub"
+namespace = "deali"
+image = "home"
+
+[deploy]
+driver = "compose"
+
+[deploy.compose]
+host = "deali.cn"
+path = "/home/deali/projects/home"
+env_file = ".env.prod"
+auto_env_file = false
+tag_key = "APP_IMAGE_TAG"
+up = "docker compose up -d"
+`,
+	}, func() {
+		cfg, err := LoadConfig("")
+		if err != nil {
+			t.Fatalf("LoadConfig error: %v", err)
+		}
+		if cfg.Deploy.Compose.AutoEnvFile {
+			t.Fatal("AutoEnvFile should be false when explicitly set to false in TOML")
+		}
+		if cfg.Deploy.Compose.EnvFile != ".env.prod" {
+			t.Fatalf("EnvFile = %q, want .env.prod", cfg.Deploy.Compose.EnvFile)
+		}
+	})
+}
+
+func TestAutoEnvFile_LoadFromToml_Default(t *testing.T) {
+	withTempConfigDir(t, map[string]string{
+		"ship.toml": `
+schema = 2
+
+[build]
+driver = "docker"
+
+[build.docker]
+image = "home"
+dockerfile = "./Dockerfile"
+platforms = ["linux/amd64"]
+
+[publish]
+driver = "registry"
+
+[[publish.registry.targets]]
+type = "dockerhub"
+namespace = "deali"
+image = "home"
+
+[deploy]
+driver = "compose"
+
+[deploy.compose]
+host = "deali.cn"
+path = "/home/deali/projects/home"
+env_file = ".env.prod"
+tag_key = "APP_IMAGE_TAG"
+up = "docker compose up -d"
+`,
+	}, func() {
+		cfg, err := LoadConfig("")
+		if err != nil {
+			t.Fatalf("LoadConfig error: %v", err)
+		}
+		// 未显式设置时应保持默认值 true
+		if !cfg.Deploy.Compose.AutoEnvFile {
+			t.Fatal("AutoEnvFile should default to true when not set in TOML")
+		}
+	})
 }

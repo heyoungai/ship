@@ -93,6 +93,7 @@ local_file = "./deploy/compose.prod.yaml"
 remote_file = "compose.yaml"
 local_env_file = "./deploy/.env.prod"
 env_file = ".env"
+auto_env_file = true
 tag_key = "APP_IMAGE_TAG"
 up = "docker compose --env-file ./.env up -d --remove-orphans"
 
@@ -108,6 +109,8 @@ timeout_seconds = 5
 ```
 
 如果你希望首次部署时由 ship 自动把本地部署资产带上去，直接使用 `deploy.compose.local_file` 和 `deploy.compose.local_env_file`。ship 会先在远端创建 `deploy.compose.path`，上传文件，再更新 `env_file` 中的镜像 tag 并执行 `docker compose up`。
+
+如果你的远端 env 文件不是默认的 `.env`（比如 `.env.prod`），只需修改 `env_file` 字段，ship 会自动将 `--env-file` 注入到 `up` 命令中（由 `auto_env_file = true` 控制，这是默认行为）。
 
 最常用执行方式：
 

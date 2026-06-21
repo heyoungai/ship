@@ -93,6 +93,7 @@ local_file = "./deploy/compose.prod.yaml"
 remote_file = "compose.yaml"
 local_env_file = "./deploy/.env.prod"
 env_file = ".env"
+auto_env_file = true
 tag_key = "APP_IMAGE_TAG"
 up = "docker compose --env-file ./.env up -d --remove-orphans"
 
@@ -195,7 +196,29 @@ $env:SHIP_VERSION = "v1.0.0"
 - 临时值走覆盖
 - 不要让项目依赖大量外部环境变量才能理解发布语义
 
-## 8. 和 Taskfile 的推荐关系
+## 8. env_file 配置策略
+
+`deploy.compose` 下有三个与环境文件相关的字段，推荐按下面方式理解：
+
+- `env_file`：远端 env 文件名，ship 会往里面写入镜像 tag，docker compose 也从它读取环境变量。默认 `.env`。
+- `local_env_file`：本地 env 文件路径，首次部署时通过 scp 上传到远端。后续部署 ship 只更新其中的 tag，不再重复上传。
+- `auto_env_file`：当 `env_file` 不是 `.env` 时，自动将 `--env-file` 注入 `up` 命令。默认 `true`。
+
+典型用法：
+
+```toml
+[deploy.compose]
+env_file = ".env.prod"                     # 远端使用 .env.prod
+local_env_file = "./deploy/.env.prod"      # 首次部署上传本地文件
+auto_env_file = true                       # 自动注入 --env-file ./.env.prod
+up = "docker compose up -d --remove-orphans"  # 无需手写 --env-file
+```
+
+当 `auto_env_file = true` 时，ship 会在执行前自动将 `up` 改写为 `docker compose --env-file ./.env.prod up -d --remove-orphans`。
+
+如果你的 `up` 命令已经显式包含 `--env-file`，ship 不会重复注入。如果你希望完全手动控制 `up` 命令，设置 `auto_env_file = false` 即可。
+
+## 9. 和 Taskfile 的推荐关系
 
 如果项目已经有 Taskfile，推荐这样分工：
 
@@ -217,7 +240,7 @@ tasks:
 - 发布语义仍由 ship 维护
 - 不会把 ship 变成另一个 task runner
 
-## 9. 默认范式的核心约束
+## 10. 默认范式的核心约束
 
 后续所有 Docker 项目接入 ship，都应优先遵守：
 
@@ -226,7 +249,7 @@ tasks:
 3. hooks 和 templates 只作为逃生口
 4. 如果一个项目离默认范式太远，先判断它是不是 ship 的适用对象
 
-## 10. 一句话总结
+## 11. 一句话总结
 
 ship 在 Docker 项目上的默认推荐模式应该是：
 
