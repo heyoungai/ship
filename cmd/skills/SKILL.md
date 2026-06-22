@@ -1,3 +1,8 @@
+---
+name: ship
+description: Use the ship CLI tool for Docker image and Go binary build, push, and deploy workflows.
+---
+
 # Ship — Docker 镜像 & Go 二进制构建部署工具
 
 Ship 是一个 CLI 工具，支持 **build → tag → push → deploy → verify** 全流程，也可分步执行。配置文件为项目根目录的 `ship.toml`（schema = 2）。
