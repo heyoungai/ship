@@ -17,7 +17,7 @@ var rootCmd = &cobra.Command{
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// 不需要配置的命令
 		switch cmd.Name() {
-		case "init", "version", "current", "history", "help", "completion":
+		case "init", "version", "current", "history", "skill", "help", "completion":
 			return nil
 		}
 		loadedCfg, err := internal.LoadConfig(os.Getenv("IMAGE_NAME"))
@@ -45,4 +45,5 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(rollbackCmd)
 	rootCmd.AddCommand(historyCmd)
+	rootCmd.AddCommand(skillCmd)
 }

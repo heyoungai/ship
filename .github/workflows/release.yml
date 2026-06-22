@@ -104,7 +104,7 @@ jobs:
                 "hash": "${ARM64_HASH}"
               }
             },
-            "bin": "ship-windows-amd64.exe",
+            "bin": [["ship.exe", "ship-windows-amd64.exe"]],
             "checkver": {
               "github": "https://github.com/${{ github.repository }}"
             },
