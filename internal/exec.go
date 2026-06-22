@@ -1,10 +1,8 @@
 package internal
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -31,6 +29,8 @@ func runCmd(args []string, label, cwd string, env map[string]string) error {
 
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Env = os.Environ()
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	if cwd != "" {
 		cmd.Dir = cwd
 	}
@@ -38,41 +38,13 @@ func runCmd(args []string, label, cwd string, env map[string]string) error {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
 
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("创建 stdout 管道失败: %w", err)
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("创建 stderr 管道失败: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("启动命令失败: %w", err)
-	}
-
-	done := make(chan struct{}, 2)
-	go streamOutput(stdout, done)
-	go streamOutput(stderr, done)
-	<-done
-	<-done
-
-	if err := cmd.Wait(); err != nil {
+	if err := cmd.Run(); err != nil {
 		fmt.Printf("  %s %s  %v\n", ErrorStyle.Render("✖"), label, err)
 		return err
 	}
 
 	fmt.Printf("  %s %s\n", SuccessStyle.Render("✔"), label)
 	return nil
-}
-
-// streamOutput 逐行读取 io.Reader 并输出到终端
-func streamOutput(r io.Reader, done chan struct{}) {
-	defer func() { done <- struct{}{} }()
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		fmt.Printf("    %s\n", scanner.Text())
-	}
 }
 
 // GetLatestTag 获取最新的 git tag

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gofrs/flock"
 	"github.com/pterm/pterm"
 )
 
@@ -25,23 +26,27 @@ type HistoryEntry struct {
 
 // LoadHistory 读取部署历史记录。
 func LoadHistory() ([]HistoryEntry, error) {
-	data, err := os.ReadFile(historyFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("读取部署历史失败: %w", err)
-	}
-	var entries []HistoryEntry
-	if err := json.Unmarshal(data, &entries); err != nil {
-		return nil, fmt.Errorf("解析部署历史失败: %w", err)
-	}
-	return entries, nil
+	return loadHistoryUnlocked()
 }
 
-// RecordDeployment 记录一次部署操作到历史
+// RecordDeployment 记录一次部署操作到历史。
+// 使用文件锁避免多个 ship 进程并发写入时丢失记录。
 func RecordDeployment(version, action, result, note string) error {
-	entries, err := LoadHistory()
+	if err := os.MkdirAll(historyDir, 0755); err != nil {
+		return fmt.Errorf("创建历史目录失败: %w", err)
+	}
+
+	lock := flock.New(historyFile + ".lock")
+	locked, err := lock.TryLock()
+	if err != nil {
+		return fmt.Errorf("获取历史文件锁失败: %w", err)
+	}
+	if !locked {
+		return fmt.Errorf("历史文件被其他进程锁定，请稍后重试")
+	}
+	defer lock.Unlock()
+
+	entries, err := loadHistoryUnlocked()
 	if err != nil {
 		return err
 	}
@@ -58,9 +63,6 @@ func RecordDeployment(version, action, result, note string) error {
 		entries = entries[len(entries)-100:]
 	}
 
-	if err := os.MkdirAll(historyDir, 0755); err != nil {
-		return fmt.Errorf("创建历史目录失败: %w", err)
-	}
 	data, err := json.MarshalIndent(entries, "", "  ")
 	if err != nil {
 		return fmt.Errorf("序列化部署历史失败: %w", err)
@@ -69,6 +71,22 @@ func RecordDeployment(version, action, result, note string) error {
 		return fmt.Errorf("写入部署历史失败: %w", err)
 	}
 	return nil
+}
+
+// loadHistoryUnlocked 读取历史记录（无锁版本，供持锁时调用）。
+func loadHistoryUnlocked() ([]HistoryEntry, error) {
+	data, err := os.ReadFile(historyFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("读取部署历史失败: %w", err)
+	}
+	var entries []HistoryEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return nil, fmt.Errorf("解析部署历史失败: %w", err)
+	}
+	return entries, nil
 }
 
 // GetPreviousVersion 获取可回滚的上一个版本

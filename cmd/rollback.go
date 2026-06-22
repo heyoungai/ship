@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+
 	"github.com/heyoungai/ship/internal"
 
 	"github.com/spf13/cobra"
@@ -14,7 +15,7 @@ var rollbackCmd = &cobra.Command{
 	Short: "回滚到上一个成功部署的版本",
 	Long:  "回滚远程部署版本。不指定版本时自动回滚到上一个成功部署的版本。",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return doRollback()
+		return doRollback(cfg)
 	},
 }
 
@@ -23,7 +24,7 @@ func init() {
 }
 
 // doRollback 执行回滚操作
-func doRollback() error {
+func doRollback(cfg *internal.Config) error {
 	if cfg.Deploy.Driver != "compose" {
 		return fmt.Errorf("rollback 当前仅支持 deploy.driver = compose，当前为 %s", cfg.Deploy.Driver)
 	}
@@ -60,7 +61,7 @@ func doRollback() error {
 
 	// 2. 执行部署
 	profile := cfg.DefaultProfile()
-	if err := executeDeployStage(targetVersion, profile); err != nil {
+	if err := executeDeployStage(cfg, targetVersion, profile); err != nil {
 		return recordDeploymentResult(err, targetVersion, "rollback", "fail", err.Error())
 	}
 	if err := internal.ExecuteVerify(cfg, profile, targetVersion); err != nil {

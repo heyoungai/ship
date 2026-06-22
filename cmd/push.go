@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+
 	"github.com/heyoungai/ship/internal"
 
 	"github.com/spf13/cobra"
@@ -25,7 +26,7 @@ var pushCmd = &cobra.Command{
 			return err
 		}
 		for _, p := range profiles {
-			if err := executePublishProfile(ver, p); err != nil {
+			if err := executePublishProfile(cfg, ver, p); err != nil {
 				return err
 			}
 		}
@@ -39,12 +40,12 @@ func init() {
 }
 
 // doPush 按当前 publish.driver 执行单个 profile 的发布。
-func doPush(version string, profile internal.Profile) error {
+func doPush(cfg *internal.Config, version string, profile internal.Profile) error {
 	switch cfg.Publish.Driver {
 	case "registry":
-		return doRegistryPush(version, profile)
+		return doRegistryPush(cfg, version, profile)
 	case "scp":
-		return doSCPPush(profile, version)
+		return doSCPPush(cfg, profile, version)
 	case "none":
 		internal.PrintInfo("当前配置未启用发布阶段")
 		return nil
@@ -53,7 +54,7 @@ func doPush(version string, profile internal.Profile) error {
 	}
 }
 
-func doRegistryPush(version string, profile internal.Profile) error {
+func doRegistryPush(cfg *internal.Config, version string, profile internal.Profile) error {
 	if !cfg.Publish.Registry.Push {
 		internal.PrintInfo("publish.registry.push = false，跳过 docker push")
 		return nil
@@ -100,7 +101,7 @@ func doRegistryPush(version string, profile internal.Profile) error {
 }
 
 // doSCPPush 按当前 profile 渲染 scp 发布目标并上传产物。
-func doSCPPush(profile internal.Profile, version string) error {
+func doSCPPush(cfg *internal.Config, profile internal.Profile, version string) error {
 	ctx := internal.NewRenderContext(cfg, profile, version)
 	name := internal.FormatProfileName(profile)
 	nameLabel := ""

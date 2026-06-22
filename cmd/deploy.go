@@ -5,8 +5,9 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"github.com/heyoungai/ship/internal"
 	"strings"
+
+	"github.com/heyoungai/ship/internal"
 
 	"github.com/spf13/cobra"
 )
@@ -22,7 +23,7 @@ var deployCmd = &cobra.Command{
 			return err
 		}
 		profile := cfg.DefaultProfile()
-		if err := executeDeployStage(ver, profile); err != nil {
+		if err := executeDeployStage(cfg, ver, profile); err != nil {
 			return recordDeploymentResult(err, ver, "deploy", "fail", err.Error())
 		}
 		if err := internal.ExecuteVerify(cfg, profile, ver); err != nil {
@@ -37,18 +38,18 @@ func init() {
 }
 
 // doDeploy 按当前 deploy.driver 执行部署。
-func doDeploy(version string, profile internal.Profile) error {
+func doDeploy(cfg *internal.Config, version string, profile internal.Profile) error {
 	switch cfg.Deploy.Driver {
 	case "compose":
-		if err := doComposeDeploy(version, profile); err != nil {
+		if err := doComposeDeploy(cfg, version, profile); err != nil {
 			return err
 		}
 	case "binary-install":
-		if err := doBinaryInstallDeploy(profile, version); err != nil {
+		if err := doBinaryInstallDeploy(cfg, profile, version); err != nil {
 			return err
 		}
 	case "ssh":
-		if err := doSSHDeploy(profile, version); err != nil {
+		if err := doSSHDeploy(cfg, profile, version); err != nil {
 			return err
 		}
 	case "none":
@@ -61,7 +62,7 @@ func doDeploy(version string, profile internal.Profile) error {
 }
 
 // doComposeDeploy 执行 compose driver 的远程部署，并渲染 tag_key/up/path 等字段。
-func doComposeDeploy(version string, profile internal.Profile) error {
+func doComposeDeploy(cfg *internal.Config, version string, profile internal.Profile) error {
 	ctx := internal.NewRenderContext(cfg, profile, version)
 	host, err := ctx.RenderString(cfg.Deploy.Compose.Host)
 	if err != nil {
@@ -279,7 +280,7 @@ func uploadComposeArtifact(host, localFile, remoteFile, label string) error {
 }
 
 // doBinaryInstallDeploy 执行 binary-install driver 的远程安装逻辑。
-func doBinaryInstallDeploy(profile internal.Profile, version string) error {
+func doBinaryInstallDeploy(cfg *internal.Config, profile internal.Profile, version string) error {
 	ctx := internal.NewRenderContext(cfg, profile, version)
 	renderedLocal, err := ctx.RenderString(cfg.Publish.SCP.Local)
 	if err != nil {
@@ -337,7 +338,7 @@ func doBinaryInstallDeploy(profile internal.Profile, version string) error {
 }
 
 // doSSHDeploy 执行 ssh driver 的远程命令列表。
-func doSSHDeploy(profile internal.Profile, version string) error {
+func doSSHDeploy(cfg *internal.Config, profile internal.Profile, version string) error {
 	ctx := internal.NewRenderContext(cfg, profile, version)
 	host, err := ctx.RenderString(cfg.Deploy.SSH.Host)
 	if err != nil {

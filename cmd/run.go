@@ -2,8 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/heyoungai/ship/internal"
 	"strings"
+
+	"github.com/heyoungai/ship/internal"
 
 	"github.com/spf13/cobra"
 )
@@ -77,7 +78,7 @@ var runCmd = &cobra.Command{
 		currentStep := 1
 		internal.ProgressStep(currentStep, buildStep)
 		for _, p := range profiles {
-			if err := executeBuildProfile(ver, p, runEnvFile); err != nil {
+			if err := executeBuildProfile(cfg, ver, p, runEnvFile); err != nil {
 				return err
 			}
 		}
@@ -86,7 +87,7 @@ var runCmd = &cobra.Command{
 		if shouldTag {
 			internal.ProgressStep(currentStep, "打 Tag")
 			for _, p := range profiles {
-				if err := doTag(ver, p); err != nil {
+				if err := doTag(cfg, ver, p); err != nil {
 					return err
 				}
 			}
@@ -96,17 +97,17 @@ var runCmd = &cobra.Command{
 		if shouldPublish {
 			internal.ProgressStep(currentStep, publishStep)
 			for _, p := range profiles {
-				if err := executePublishProfile(ver, p); err != nil {
+				if err := executePublishProfile(cfg, ver, p); err != nil {
 					return err
 				}
 			}
 			currentStep++
 		}
 
-		deployProfile := selectDeployProfile(profiles)
+		deployProfile := selectDeployProfile(cfg, profiles)
 		if shouldDeploy {
 			internal.ProgressStep(currentStep, deployStep)
-			if err := executeDeployStage(ver, deployProfile); err != nil {
+			if err := executeDeployStage(cfg, ver, deployProfile); err != nil {
 				return recordDeploymentResult(err, ver, "deploy", "fail", err.Error())
 			}
 			currentStep++

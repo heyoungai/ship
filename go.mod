@@ -5,6 +5,7 @@ go 1.25.8
 require (
 	charm.land/huh/v2 v2.0.3
 	github.com/BurntSushi/toml v1.6.0
+	github.com/gofrs/flock v0.13.0
 	github.com/joho/godotenv v1.5.1
 	github.com/pterm/pterm v0.12.83
 	github.com/spf13/cobra v1.9.1

@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"github.com/heyoungai/ship/internal"
 	"strings"
+
+	"github.com/heyoungai/ship/internal"
 
 	"github.com/spf13/cobra"
 )
@@ -31,7 +32,7 @@ var buildCmd = &cobra.Command{
 		internal.ProgressInit(len(profiles))
 		for i, p := range profiles {
 			internal.ProgressStep(i+1, buildStepTitle())
-			if err := executeBuildProfile(version, p, buildEnvFile); err != nil {
+			if err := executeBuildProfile(cfg, version, p, buildEnvFile); err != nil {
 				return err
 			}
 		}
@@ -46,21 +47,21 @@ func init() {
 }
 
 // doBuild 按当前 build.driver 执行单个 profile 的构建。
-func doBuild(profile internal.Profile, envFile, version string) error {
+func doBuild(cfg *internal.Config, profile internal.Profile, envFile, version string) error {
 	switch cfg.Build.Driver {
 	case "docker":
-		return doDockerBuild(profile, envFile, version)
+		return doDockerBuild(cfg, profile, envFile, version)
 	case "go-binary":
-		return doGoBinaryBuild(profile, version)
+		return doGoBinaryBuild(cfg, profile, version)
 	case "command":
-		return doCommandBuild(profile, version)
+		return doCommandBuild(cfg, profile, version)
 	default:
 		return fmt.Errorf("当前不支持的 build.driver: %s", cfg.Build.Driver)
 	}
 }
 
 // doDockerBuild 执行 Docker driver 的构建，并对 v2 模板变量做渲染。
-func doDockerBuild(profile internal.Profile, envFile, version string) error {
+func doDockerBuild(cfg *internal.Config, profile internal.Profile, envFile, version string) error {
 	ctx := internal.NewRenderContext(cfg, profile, version)
 	if envFile == "" {
 		envFile = cfg.Build.EnvFile
@@ -81,7 +82,7 @@ func doDockerBuild(profile internal.Profile, envFile, version string) error {
 	if err != nil {
 		return err
 	}
-	buildArgs, err := dockerBuildArgs(ctx, renderedEnvFile)
+	buildArgs, err := dockerBuildArgs(cfg, ctx, renderedEnvFile)
 	if err != nil {
 		return err
 	}
@@ -156,7 +157,7 @@ func doDockerBuild(profile internal.Profile, envFile, version string) error {
 }
 
 // doGoBinaryBuild 执行 Go 二进制构建，并渲染 output / ldflags 等模板变量。
-func doGoBinaryBuild(profile internal.Profile, version string) error {
+func doGoBinaryBuild(cfg *internal.Config, profile internal.Profile, version string) error {
 	ctx := internal.NewRenderContext(cfg, profile, version)
 	name := internal.FormatProfileName(profile)
 	nameLabel := ""
@@ -228,7 +229,7 @@ func doGoBinaryBuild(profile internal.Profile, version string) error {
 }
 
 // doCommandBuild 执行 command driver 的构建命令，并渲染 run/cwd/env。
-func doCommandBuild(profile internal.Profile, version string) error {
+func doCommandBuild(cfg *internal.Config, profile internal.Profile, version string) error {
 	ctx := internal.NewRenderContext(cfg, profile, version)
 	name := internal.FormatProfileName(profile)
 	nameLabel := ""
@@ -264,7 +265,7 @@ func doCommandBuild(profile internal.Profile, version string) error {
 }
 
 // dockerBuildArgs 汇总 .env 与 build.docker.build_args 的 build-arg 参数。
-func dockerBuildArgs(ctx internal.RenderContext, envFile string) ([]string, error) {
+func dockerBuildArgs(cfg *internal.Config, ctx internal.RenderContext, envFile string) ([]string, error) {
 	var args []string
 	if cfg.Build.Docker.BuildArgsFromEnv {
 		args = append(args, internal.LoadBuildArgs(envFile)...)

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+
 	"github.com/heyoungai/ship/internal"
 
 	"github.com/spf13/cobra"
@@ -25,7 +26,7 @@ var tagCmd = &cobra.Command{
 			return err
 		}
 		for _, p := range profiles {
-			if err := doTag(ver, p); err != nil {
+			if err := doTag(cfg, ver, p); err != nil {
 				return err
 			}
 		}
@@ -39,7 +40,7 @@ func init() {
 }
 
 // doTag 给单个 profile 的镜像打 tag
-func doTag(version string, profile internal.Profile) error {
+func doTag(cfg *internal.Config, version string, profile internal.Profile) error {
 	if !cfg.UsesTagStage() {
 		internal.PrintInfo("当前配置不需要独立 tag 阶段")
 		return nil
