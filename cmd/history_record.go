@@ -3,7 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"ship/internal"
+	"github.com/heyoungai/ship/internal"
 )
 
 // recordDeploymentResult 统一处理部署/回滚结果的历史写入，

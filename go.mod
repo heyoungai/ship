@@ -1,4 +1,4 @@
-module ship
+module github.com/heyoungai/ship
 
 go 1.25.8
 

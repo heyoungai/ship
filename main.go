@@ -2,7 +2,7 @@ package main
 
 import (
 	"os"
-	"ship/cmd"
+	"github.com/heyoungai/ship/cmd"
 )
 
 func main() {

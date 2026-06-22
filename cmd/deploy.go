@@ -5,7 +5,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"ship/internal"
+	"github.com/heyoungai/ship/internal"
 	"strings"
 
 	"github.com/spf13/cobra"

@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"fmt"
-	"ship/internal"
+	"github.com/heyoungai/ship/internal"
 	"strings"
 
 	"github.com/spf13/cobra"

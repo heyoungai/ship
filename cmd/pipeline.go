@@ -1,6 +1,6 @@
 package cmd
 
-import "ship/internal"
+import "github.com/heyoungai/ship/internal"
 
 // executeBuildProfile 执行单个 profile 的 prepare → templates → build → post_build。
 func executeBuildProfile(version string, profile internal.Profile, envFile string) error {

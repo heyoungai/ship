@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"os"
-	"ship/internal"
+	"github.com/heyoungai/ship/internal"
 
 	"github.com/spf13/cobra"
 )
