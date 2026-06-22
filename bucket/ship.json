@@ -1,0 +1,30 @@
+{
+  "version": "0.0.0",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/heyoungai/ship/releases/download/v0.0.0/ship-windows-amd64.exe",
+      "hash": ""
+    },
+    "arm64": {
+      "url": "https://github.com/heyoungai/ship/releases/download/v0.0.0/ship-windows-arm64.exe",
+      "hash": ""
+    }
+  },
+  "bin": "ship-windows-amd64.exe",
+  "checkver": {
+    "github": "https://github.com/heyoungai/ship"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/heyoungai/ship/releases/download/v$version/ship-windows-amd64.exe"
+      },
+      "arm64": {
+        "url": "https://github.com/heyoungai/ship/releases/download/v$version/ship-windows-arm64.exe"
+      }
+    },
+    "hash": {
+      "url": "https://github.com/heyoungai/ship/releases/download/v$version/checksums.txt"
+    }
+  }
+}
