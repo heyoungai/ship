@@ -10,7 +10,7 @@
       "hash": "25893e1a89e1793e6a7ee40dd1715c0ded9e710a0c12683f82a55d6e3c3ab38d"
     }
   },
-  "bin": [["ship.exe", "ship-windows-amd64.exe"]],
+  "bin": [["ship-windows-amd64.exe", "ship.exe"]],
   "checkver": {
     "github": "https://github.com/heyoungai/ship"
   },
