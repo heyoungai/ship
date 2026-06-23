@@ -96,17 +96,14 @@ jobs:
             "version": "${VERSION}",
             "architecture": {
               "64bit": {
-                "url": "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/ship-windows-amd64.exe",
+                "url": "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/ship-windows-amd64.exe#/ship.exe",
                 "hash": "${AMD64_HASH}"
               },
               "arm64": {
-                "url": "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/ship-windows-arm64.exe",
+                "url": "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/ship-windows-arm64.exe#/ship-arm64.exe",
                 "hash": "${ARM64_HASH}"
               }
             },
-            "post_install": [
-              "Rename-Item \"\$dir\\\\ship-windows-amd64.exe\" \"\$dir\\\\ship.exe\""
-            ],
             "bin": "ship.exe",
             "checkver": {
               "github": "https://github.com/${{ github.repository }}"
@@ -114,10 +111,10 @@ jobs:
             "autoupdate": {
               "architecture": {
                 "64bit": {
-                  "url": "https://github.com/${{ github.repository }}/releases/download/v\$version/ship-windows-amd64.exe"
+                  "url": "https://github.com/${{ github.repository }}/releases/download/v\$version/ship-windows-amd64.exe#/ship.exe"
                 },
                 "arm64": {
-                  "url": "https://github.com/${{ github.repository }}/releases/download/v\$version/ship-windows-arm64.exe"
+                  "url": "https://github.com/${{ github.repository }}/releases/download/v\$version/ship-windows-arm64.exe#/ship-arm64.exe"
                 }
               },
               "hash": {
