@@ -104,7 +104,10 @@ jobs:
                 "hash": "${ARM64_HASH}"
               }
             },
-            "bin": [["ship.exe", "ship-windows-amd64.exe"]],
+            "post_install": [
+              "Rename-Item \"\$dir\\ship-windows-amd64.exe\" \"\$dir\\ship.exe\""
+            ],
+            "bin": "ship.exe",
             "checkver": {
               "github": "https://github.com/${{ github.repository }}"
             },

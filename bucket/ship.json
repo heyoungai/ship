@@ -10,7 +10,10 @@
       "hash": "d23a0f1b00d5a0df8a47376d0fc292b06e96fe7c104a96fe59226cc051ca97be"
     }
   },
-  "bin": [["ship.exe", "ship-windows-amd64.exe"]],
+  "post_install": [
+    "Rename-Item \"$dir\\ship-windows-amd64.exe\" \"$dir\\ship.exe\""
+  ],
+  "bin": "ship.exe",
   "checkver": {
     "github": "https://github.com/heyoungai/ship"
   },
