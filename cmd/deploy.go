@@ -39,6 +39,13 @@ func init() {
 
 // doDeploy 按当前 deploy.driver 执行部署。
 func doDeploy(cfg *internal.Config, version string, profile internal.Profile) error {
+	renderedCfg, renderedProfile, err := internal.RenderConfigForProfile(cfg, profile, version)
+	if err != nil {
+		return err
+	}
+	cfg = renderedCfg
+	profile = renderedProfile
+
 	switch cfg.Deploy.Driver {
 	case "compose":
 		if err := doComposeDeploy(cfg, version, profile); err != nil {

@@ -48,6 +48,13 @@ func init() {
 
 // doBuild 按当前 build.driver 执行单个 profile 的构建。
 func doBuild(cfg *internal.Config, profile internal.Profile, envFile, version string) error {
+	renderedCfg, renderedProfile, err := internal.RenderConfigForProfile(cfg, profile, version)
+	if err != nil {
+		return err
+	}
+	cfg = renderedCfg
+	profile = renderedProfile
+
 	switch cfg.Build.Driver {
 	case "docker":
 		return doDockerBuild(cfg, profile, envFile, version)

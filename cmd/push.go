@@ -41,6 +41,13 @@ func init() {
 
 // doPush 按当前 publish.driver 执行单个 profile 的发布。
 func doPush(cfg *internal.Config, version string, profile internal.Profile) error {
+	renderedCfg, renderedProfile, err := internal.RenderConfigForProfile(cfg, profile, version)
+	if err != nil {
+		return err
+	}
+	cfg = renderedCfg
+	profile = renderedProfile
+
 	switch cfg.Publish.Driver {
 	case "registry":
 		return doRegistryPush(cfg, version, profile)

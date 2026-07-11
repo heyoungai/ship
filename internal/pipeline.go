@@ -122,6 +122,20 @@ func TemplateAppliesToProfile(spec TemplateSpec, profile Profile) bool {
 
 // ExecuteSteps 执行指定阶段的 steps。
 func ExecuteSteps(group string, steps []Step, cfg *Config, profile Profile, version string) error {
+	_ = steps
+
+	renderedCfg, renderedProfile, err := RenderConfigForProfile(cfg, profile, version)
+	if err != nil {
+		return fmt.Errorf("渲染 %s 配置失败: %w", group, err)
+	}
+	cfg = renderedCfg
+	profile = renderedProfile
+
+	steps, err = stepGroup(cfg, group)
+	if err != nil {
+		return err
+	}
+
 	ctx := NewRenderContext(cfg, profile, version)
 	for _, step := range steps {
 		if !StepAppliesToProfile(step, profile) {
@@ -157,8 +171,34 @@ func ExecuteSteps(group string, steps []Step, cfg *Config, profile Profile, vers
 	return nil
 }
 
+func stepGroup(cfg *Config, group string) ([]Step, error) {
+	switch group {
+	case "prepare":
+		return cfg.Steps.Prepare, nil
+	case "post_build":
+		return cfg.Steps.PostBuild, nil
+	case "pre_publish":
+		return cfg.Steps.PrePublish, nil
+	case "post_publish":
+		return cfg.Steps.PostPublish, nil
+	case "pre_deploy":
+		return cfg.Steps.PreDeploy, nil
+	case "post_deploy":
+		return cfg.Steps.PostDeploy, nil
+	default:
+		return nil, fmt.Errorf("未知 steps group: %s", group)
+	}
+}
+
 // ExecuteTemplates 渲染并写出匹配当前 profile 的模板文件。
 func ExecuteTemplates(cfg *Config, profile Profile, version string) error {
+	renderedCfg, renderedProfile, err := RenderConfigForProfile(cfg, profile, version)
+	if err != nil {
+		return fmt.Errorf("渲染 templates 配置失败: %w", err)
+	}
+	cfg = renderedCfg
+	profile = renderedProfile
+
 	ctx := NewRenderContext(cfg, profile, version)
 	for _, spec := range cfg.Templates {
 		if !TemplateAppliesToProfile(spec, profile) {
@@ -191,6 +231,13 @@ func ExecuteTemplates(cfg *Config, profile Profile, version string) error {
 
 // ExecuteVerify 按 verify.driver 或兼容的 deploy.healthcheck 执行部署后校验。
 func ExecuteVerify(cfg *Config, profile Profile, version string) error {
+	renderedCfg, renderedProfile, err := RenderConfigForProfile(cfg, profile, version)
+	if err != nil {
+		return fmt.Errorf("渲染 verify 配置失败: %w", err)
+	}
+	cfg = renderedCfg
+	profile = renderedProfile
+
 	ctx := NewRenderContext(cfg, profile, version)
 
 	switch cfg.Verify.Driver {

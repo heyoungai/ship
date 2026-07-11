@@ -39,8 +39,18 @@ func init() {
 	tagCmd.Flags().StringVarP(&tagProfile, "profile", "p", "", "指定 profile 名称 (默认全部)")
 }
 
-// doTag 给单个 profile 的镜像打 tag
+// doTag 给单个 profile 的镜像打 tag。
+//
+// 这里显式先渲染一轮配置，确保 publish.registry.targets[*].url / namespace / image
+// 和 build.docker.image 等字段与 build/push/deploy 阶段保持一致，而不是直接使用原始 TOML 文本。
 func doTag(cfg *internal.Config, version string, profile internal.Profile) error {
+	renderedCfg, renderedProfile, err := internal.RenderConfigForProfile(cfg, profile, version)
+	if err != nil {
+		return err
+	}
+	cfg = renderedCfg
+	profile = renderedProfile
+
 	if !cfg.UsesTagStage() {
 		internal.PrintInfo("当前配置不需要独立 tag 阶段")
 		return nil
