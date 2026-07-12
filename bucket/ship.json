@@ -1,13 +1,13 @@
 {
-  "version": "2.4.7",
+  "version": "2.5.0",
   "architecture": {
     "64bit": {
-      "url": "https://github.com/heyoungai/ship/releases/download/v2.4.7/ship-windows-amd64.exe#/ship.exe",
-      "hash": "28d71e4296cda5f4d7988e39e71a1e29fe2563437cd716652d0e7c8b7aee091d"
+      "url": "https://github.com/heyoungai/ship/releases/download/v2.5.0/ship-windows-amd64.exe#/ship.exe",
+      "hash": "1413d6e25a2cd10c531a3fb1e0ab49113677db0e6390a55e83401296e2fa311e"
     },
     "arm64": {
-      "url": "https://github.com/heyoungai/ship/releases/download/v2.4.7/ship-windows-arm64.exe#/ship-arm64.exe",
-      "hash": "5bab73e0641fa3d879246d145c8d16ea04b0cabdac7ab242b105a2b9e9092cad"
+      "url": "https://github.com/heyoungai/ship/releases/download/v2.5.0/ship-windows-arm64.exe#/ship-arm64.exe",
+      "hash": "d1cfe0b131dfd6d84af231dad8c3d05073b81ca99d09e43e0513234e329f58ad"
     }
   },
   "bin": "ship.exe",
