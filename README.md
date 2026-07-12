@@ -141,6 +141,17 @@ ship --help
 
 `deploy.compose.local_file` 和 `deploy.compose.local_env_file` 为可选项；启用后 ship 会先确保远端目录存在，再通过 `scp` 上传本地 compose / env 文件，然后继续更新 `tag_key` 和执行 `docker compose up`。
 
+### 未识别配置项
+
+`ship.toml` 中出现 struct 未定义的字段时，默认会直接报错并列出完整路径，避免“写了但不生效”：
+
+```toml
+[config]
+unknown_keys = "error"  # error | warn | ignore，默认 error
+```
+
+也可用环境变量 `SHIP_UNKNOWN_KEYS=warn` 临时降级。项目差异请优先使用 `steps.*`，不要依赖未文档化的字段名。
+
 ### env_file 配置说明
 
 `deploy.compose` 下有三个与环境文件相关的字段：

@@ -28,6 +28,15 @@ deploy = true
 rollback = true
 verify = true
 
+# ── 配置加载行为 ──────────────────────────────────────────────────
+# unknown_keys 控制 ship.toml 出现未识别字段时的行为：
+#   error  - 直接失败（默认）
+#   warn   - 打印警告并继续
+#   ignore - 静默忽略
+# 也可用环境变量 SHIP_UNKNOWN_KEYS 覆盖。
+[config]
+unknown_keys = "error"
+
 # ── 自定义变量（可用于模板与插值）──────────────────────────────────
 [vars]
 app_name = "home"

@@ -26,6 +26,8 @@ func (c *Config) Validate() error {
 		c.validateV2(&missing)
 	}
 
+	c.validateRuntimeOptions(&missing)
+
 	if len(missing) > 0 {
 		var b strings.Builder
 		b.WriteString("配置缺失或无效：")
@@ -193,5 +195,15 @@ func (c *Config) validateRegistryTargets(missing *[]string) {
 		if target.Image == "" {
 			*missing = append(*missing, prefix+".image")
 		}
+	}
+}
+
+func (c *Config) validateRuntimeOptions(missing *[]string) {
+	mode := resolveUnknownKeysMode(c)
+	switch mode {
+	case unknownKeysError, unknownKeysWarn, unknownKeysIgnore:
+	case "":
+	default:
+		*missing = append(*missing, "config.unknown_keys 仅支持 error | warn | ignore")
 	}
 }

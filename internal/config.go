@@ -226,6 +226,8 @@ type VerifyConfig struct {
 type Config struct {
 	Schema int `toml:"schema"`
 
+	Runtime RuntimeOptions `toml:"config"`
+
 	Project   ProjectConfig     `toml:"project"`
 	Version   VersionConfig     `toml:"version"`
 	Features  FeatureConfig     `toml:"features"`

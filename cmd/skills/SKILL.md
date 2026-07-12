@@ -34,6 +34,8 @@ ship run -y        # 非交互模式（CI / agent 调用时必须加 -y）
 | `ship current` | 显示当前 git tag 版本 | — |
 | `ship version` | 显示 ship 工具版本 | — |
 
+> **未识别配置项**：`ship.toml` 中未在 schema 定义的字段默认会报错（如误写 `extra_files`）。可用 `[config] unknown_keys = "warn"` 或 `SHIP_UNKNOWN_KEYS=warn` 降级。
+
 > **重要**：agent 调用任何需要确认的命令时，必须加 `-y` 跳过交互提示。
 
 ---
