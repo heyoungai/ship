@@ -135,6 +135,19 @@ func TestBuildSourceTag_NamedProfile(t *testing.T) {
 	}
 }
 
+func TestBuildSourceTagForRun(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	got := cfg.BuildSourceTagForRun("abc123", Profile{Name: "", Default: true})
+	if got != "ship-build-abc123-default" {
+		t.Fatalf("BuildSourceTagForRun(default) = %q", got)
+	}
+	got = cfg.BuildSourceTagForRun("abc123", Profile{Name: "brand-a"})
+	if got != "ship-build-abc123-brand-a" {
+		t.Fatalf("BuildSourceTagForRun(named) = %q", got)
+	}
+}
+
 func TestShouldTagLatest(t *testing.T) {
 	cfg := &Config{}
 	cfg.applyDefaults()

@@ -21,7 +21,18 @@ var buildCmd = &cobra.Command{
 	Use:   "build",
 	Short: "构建产物",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		version, err := internal.ResolveVersion(cfg, buildVersion)
+		session, err := prepareReleaseSession(cfg, buildVersion, true)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if closeErr := session.Close(); closeErr != nil {
+				internal.PrintWarning(fmt.Sprintf("release session cleanup: %v", closeErr))
+			}
+		}()
+
+		version := session.Version()
+		envFile, err := resolveExternalEnvFile(session, cfg, buildEnvFile)
 		if err != nil {
 			return err
 		}
@@ -32,8 +43,14 @@ var buildCmd = &cobra.Command{
 		internal.ProgressInit(len(profiles))
 		for i, p := range profiles {
 			internal.ProgressStep(i+1, buildStepTitle())
-			if err := executeBuildProfile(cfg, version, p, buildEnvFile); err != nil {
+			// 独立 build：使用 runID 隔离并发，并额外打上兼容本地 tag，供后续独立 tag/push 消费。
+			if err := executeBuildProfile(cfg, version, p, envFile, session.RunID()); err != nil {
 				return err
+			}
+			if cfg.Build.Driver == "docker" {
+				if err := aliasBuildTagToLegacy(cfg, p, version, session.RunID()); err != nil {
+					return err
+				}
 			}
 		}
 		return nil
@@ -41,13 +58,13 @@ var buildCmd = &cobra.Command{
 }
 
 func init() {
-	buildCmd.Flags().StringVarP(&buildVersion, "version", "v", "", "版本号 (默认按配置自动解析)")
-	buildCmd.Flags().StringVar(&buildEnvFile, "env-file", "", ".env 文件路径 (默认使用配置)")
+	buildCmd.Flags().StringVarP(&buildVersion, "version", "v", "", "正式 release tag（git-tag 模式下必须存在）")
+	buildCmd.Flags().StringVar(&buildEnvFile, "env-file", "", ".env 文件路径 (默认使用配置；相对 InvocationRoot)")
 	buildCmd.Flags().StringVarP(&buildProfile, "profile", "p", "", "指定 profile 名称 (默认全部)")
 }
 
 // doBuild 按当前 build.driver 执行单个 profile 的构建。
-func doBuild(cfg *internal.Config, profile internal.Profile, envFile, version string) error {
+func doBuild(cfg *internal.Config, profile internal.Profile, envFile, version, runID string) error {
 	renderedCfg, renderedProfile, err := internal.RenderConfigForProfile(cfg, profile, version)
 	if err != nil {
 		return err
@@ -57,7 +74,7 @@ func doBuild(cfg *internal.Config, profile internal.Profile, envFile, version st
 
 	switch cfg.Build.Driver {
 	case "docker":
-		return doDockerBuild(cfg, profile, envFile, version)
+		return doDockerBuild(cfg, profile, envFile, version, runID)
 	case "go-binary":
 		return doGoBinaryBuild(cfg, profile, version)
 	case "command":
@@ -68,7 +85,7 @@ func doBuild(cfg *internal.Config, profile internal.Profile, envFile, version st
 }
 
 // doDockerBuild 执行 Docker driver 的构建，并对 v2 模板变量做渲染。
-func doDockerBuild(cfg *internal.Config, profile internal.Profile, envFile, version string) error {
+func doDockerBuild(cfg *internal.Config, profile internal.Profile, envFile, version, runID string) error {
 	ctx := internal.NewRenderContext(cfg, profile, version)
 	if envFile == "" {
 		envFile = cfg.Build.EnvFile
@@ -132,7 +149,7 @@ func doDockerBuild(cfg *internal.Config, profile internal.Profile, envFile, vers
 		nameLabel,
 		internal.DimStyle.Render(fmt.Sprintf("(%d build-args)", argCount)))
 
-	tag := cfg.BuildSourceTag(profile)
+	tag := cfg.BuildSourceTagForRun(runID, profile)
 	internal.ProgressSub(cfg.ImageRef(tag))
 	outputArgs, err := internal.BuildxOutputArgs(cfg.Build.Platforms, cfg.Build.Docker.Load)
 	if err != nil {
@@ -300,4 +317,25 @@ func buildArgsToEnv(args []string) map[string]string {
 		}
 	}
 	return envMap
+}
+
+// aliasBuildTagToLegacy 将 runID 本地镜像额外标记为兼容 tag（latest / latest-<profile>），
+// 以便独立执行的 ship tag / ship push 仍能找到产物。ship run 不调用此函数，避免并发冲突。
+func aliasBuildTagToLegacy(cfg *internal.Config, profile internal.Profile, version, runID string) error {
+	renderedCfg, renderedProfile, err := internal.RenderConfigForProfile(cfg, profile, version)
+	if err != nil {
+		return err
+	}
+	cfg = renderedCfg
+	profile = renderedProfile
+
+	from := cfg.ImageRef(cfg.BuildSourceTagForRun(runID, profile))
+	to := cfg.ImageRef(cfg.BuildSourceTag(profile))
+	if from == to {
+		return nil
+	}
+	return internal.RunCmd(
+		[]string{"docker", "tag", from, to},
+		fmt.Sprintf("alias %s → %s", from, to),
+	)
 }

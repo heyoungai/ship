@@ -59,17 +59,22 @@ func doRollback(cfg *internal.Config) error {
 		return nil
 	}
 
-	// 2. 执行部署
-	profile := cfg.DefaultProfile()
-	if err := executeDeployStage(cfg, targetVersion, profile); err != nil {
-		return recordDeploymentResult(err, targetVersion, "rollback", "fail", err.Error())
+	// 2. 执行部署（不修改 registry latest；按已有版本字符串部署）
+	session, err := prepareReleaseSession(cfg, targetVersion, false)
+	if err != nil {
+		return err
 	}
-	if err := internal.ExecuteVerify(cfg, profile, targetVersion); err != nil {
-		return recordDeploymentResult(err, targetVersion, "rollback", "fail", err.Error())
+	defer session.Close()
+	profile := cfg.DefaultProfile()
+	if err := executeDeployStage(cfg, session.Version(), profile, session); err != nil {
+		return recordDeploymentResult(err, session.Version(), "rollback", "fail", err.Error())
+	}
+	if err := internal.ExecuteVerify(cfg, profile, session.Version()); err != nil {
+		return recordDeploymentResult(err, session.Version(), "rollback", "fail", err.Error())
 	}
 
 	// 3. 记录历史
-	if err := recordDeploymentResult(nil, targetVersion, "rollback", "success", ""); err != nil {
+	if err := recordDeploymentResult(nil, session.Version(), "rollback", "success", ""); err != nil {
 		return err
 	}
 	internal.PrintSuccess("回滚完成")

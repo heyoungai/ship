@@ -20,7 +20,18 @@ var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "执行完整流程: build → tag → push → deploy",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ver, err := internal.ResolveVersion(cfg, runVersion)
+		session, err := prepareReleaseSession(cfg, runVersion, true)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if closeErr := session.Close(); closeErr != nil {
+				internal.PrintWarning(fmt.Sprintf("release session cleanup: %v", closeErr))
+			}
+		}()
+
+		ver := session.Version()
+		envFile, err := resolveExternalEnvFile(session, cfg, runEnvFile)
 		if err != nil {
 			return err
 		}
@@ -62,23 +73,24 @@ var runCmd = &cobra.Command{
 		totalSteps := len(steps)
 
 		internal.PrintBanner(fmt.Sprintf(
-			"ship run  version=%s  profiles=%s",
-			ver, strings.Join(profileNames, ", "),
+			"ship run  version=%s  profiles=%s  run_id=%s",
+			ver, strings.Join(profileNames, ", "), session.RunID(),
 		))
 		internal.SetProgressTotal(totalSteps)
 		internal.PrintRunSummary(
 			ver,
 			strings.Join(profileNames, ", "),
-			runEnvFile,
+			envFile,
 			totalSteps,
 			shouldDeploy,
 		)
 		internal.PrintInfo(fmt.Sprintf("plan=%s", strings.Join(steps, " → ")))
+		internal.PrintInfo(fmt.Sprintf("source_root=%s", session.Roots.SourceRoot))
 
 		currentStep := 1
 		internal.ProgressStep(currentStep, buildStep)
 		for _, p := range profiles {
-			if err := executeBuildProfile(cfg, ver, p, runEnvFile); err != nil {
+			if err := executeBuildProfile(cfg, ver, p, envFile, session.RunID()); err != nil {
 				return err
 			}
 		}
@@ -87,7 +99,7 @@ var runCmd = &cobra.Command{
 		if shouldTag {
 			internal.ProgressStep(currentStep, "打 Tag")
 			for _, p := range profiles {
-				if err := doTag(cfg, ver, p); err != nil {
+				if err := doTag(cfg, ver, p, session.RunID()); err != nil {
 					return err
 				}
 			}
@@ -97,7 +109,7 @@ var runCmd = &cobra.Command{
 		if shouldPublish {
 			internal.ProgressStep(currentStep, publishStep)
 			for _, p := range profiles {
-				if err := executePublishProfile(cfg, ver, p); err != nil {
+				if err := executePublishProfile(cfg, ver, p, session.RunID()); err != nil {
 					return err
 				}
 			}
@@ -107,7 +119,7 @@ var runCmd = &cobra.Command{
 		deployProfile := selectDeployProfile(cfg, profiles)
 		if shouldDeploy {
 			internal.ProgressStep(currentStep, deployStep)
-			if err := executeDeployStage(cfg, ver, deployProfile); err != nil {
+			if err := executeDeployStage(cfg, ver, deployProfile, session); err != nil {
 				return recordDeploymentResult(err, ver, "deploy", "fail", err.Error())
 			}
 			currentStep++
@@ -146,8 +158,8 @@ func verifyStepTitle() string {
 }
 
 func init() {
-	runCmd.Flags().StringVarP(&runVersion, "version", "v", "", "版本号 (默认取最新 git tag)")
-	runCmd.Flags().StringVar(&runEnvFile, "env-file", "", ".env 文件路径 (默认使用配置)")
+	runCmd.Flags().StringVarP(&runVersion, "version", "v", "", "正式 release tag（git-tag 模式下必须存在）")
+	runCmd.Flags().StringVar(&runEnvFile, "env-file", "", ".env 文件路径 (默认使用配置；相对 InvocationRoot)")
 	runCmd.Flags().StringVarP(&runProfile, "profile", "p", "", "指定 profile 名称 (默认全部)")
 	runCmd.Flags().BoolVar(&runSkipDeploy, "skip-deploy", false, "跳过远程部署步骤")
 }

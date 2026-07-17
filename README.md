@@ -98,14 +98,29 @@ ship --help
 ./ship.exe push -v v2.0.0
 ./ship.exe deploy -v v2.0.0
 
-# 一键全流程
+# 一键全流程（git-tag 模式下 -v 必须是真实本地 tag，构建内容来自该 tag 的源码快照）
 ./ship.exe run
 ./ship.exe run --skip-deploy
 ./ship.exe run -v v2.0.0 --env-file ./.env.local
 ./ship.exe run -p brand-a
 ./ship.exe init --yes
 ./ship.exe rollback --yes
+```
 
+### Git tag 真实版本构建（行为变更）
+
+当 `version.source = "git-tag"`（默认）时：
+
+- `-v` / `SHIP_VERSION` 必须对应本地已存在的 `refs/tags/<version>`，不再接受任意字符串。
+- `ship build` / `ship run` 会在 detached git worktree 中构建该 tag 的源码；**不会**切换你当前分支，也**不会**带上未提交修改。
+- 若 HEAD 已领先所选 tag，会打印高可见警告，但仍构建 tag 内容（“没打新 tag 就不会发布新代码”）。
+- 本地 Docker 构建使用 `ship-build-<run-id>-<profile>` 临时 tag，避免并发 run 互相覆盖；独立 `build` 仍会额外打兼容的 `latest` / `latest-*` 供后续独立 `tag`/`push` 使用。
+- `push` 前检查远端同名版本：digest 相同则幂等跳过；digest 不同则拒绝覆盖。
+- `deploy` / `rollback` **不会**修改 registry 的 `latest` 别名（`latest` 仅由 publish 阶段的 `tag_latest_on_default_profile` 维护）。
+
+完整设计见 [docs/git-tag-release-strategy.md](docs/git-tag-release-strategy.md)。
+
+```bash
 # 矩阵构建：指定 profile
 ./ship.exe build -p brand-a
 ./ship.exe tag -v v2.0.0 -p brand-a
@@ -304,7 +319,8 @@ env = { NEXT_PUBLIC_APP_BRAND = "brand-b" }
 - `build` 现已支持 `-p/--profile` 和 `-v/--version`
 - `local_build` 会按平台选择 shell：Windows 使用 PowerShell，Linux/macOS 使用 `sh`
 - `steps.*`、`templates`、`verify.*` 已接入命令执行链路
-- `version.source`、`version.fallback`、`version.override_env` 已参与实际版本解析
+- `version.source`、`version.fallback`、`version.override_env` 已参与实际版本解析；`git-tag` 模式还会锁定 `refs/tags/<version>` 对应 commit，并在 worktree 中构建
+- `deploy` / `rollback` 不修改 registry `latest`；正式版本 push 默认拒绝同 tag 不同 digest 覆盖
 - 历史记录写入与配置校验不再静默失败，错误会直接向上返回
 - 阶段输出、历史表格和提示已切到 PTerm，避免继续维护手写进度输出
 - 配置解析层已收敛为 **v2-only**，不再接受旧版 `registries / deploy.enabled / build.platforms` 写法

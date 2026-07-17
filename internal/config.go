@@ -332,9 +332,22 @@ func ImageTag(version string, profile Profile) string {
 	return fmt.Sprintf("%s-%s", version, profile.Name)
 }
 
-// BuildSourceTag 返回 docker build 阶段产出的本地镜像 tag。
-// 默认 profile 在启用 latest_on_default_profile 时使用 latest，否则退化到稳定的 build-default。
+// BuildSourceTag 返回 docker build 阶段产出的本地镜像 tag（无 run ID 时的兼容回退）。
+// 正式流水线应使用 BuildSourceTagForRun，避免并发 run 抢占共享 latest。
 func (c *Config) BuildSourceTag(profile Profile) string {
+	return c.BuildSourceTagForRun("", profile)
+}
+
+// BuildSourceTagForRun 返回带 run ID 的本地临时镜像 tag：ship-build-<run-id>-<profile>。
+// runID 为空时回退到历史行为（latest / build-default / latest-<name>），供兼容测试使用。
+func (c *Config) BuildSourceTagForRun(runID string, profile Profile) string {
+	if strings.TrimSpace(runID) != "" {
+		name := profile.Name
+		if name == "" {
+			name = "default"
+		}
+		return fmt.Sprintf("ship-build-%s-%s", runID, sanitizeDockerTagPart(name))
+	}
 	if profile.Name == "" {
 		if c.Build.Docker.LatestOnDefaultProfile {
 			return "latest"
@@ -342,6 +355,23 @@ func (c *Config) BuildSourceTag(profile Profile) string {
 		return "build-default"
 	}
 	return fmt.Sprintf("latest-%s", profile.Name)
+}
+
+func sanitizeDockerTagPart(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "default"
+	}
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '-', r == '_':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	return b.String()
 }
 
 // RegistryTargets 生成注册表镜像引用列表。

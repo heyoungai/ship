@@ -17,16 +17,18 @@ var pushCmd = &cobra.Command{
 	Use:   "push",
 	Short: "发布产物",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ver, err := internal.ResolveVersion(cfg, pushVersion)
+		session, err := prepareReleaseSession(cfg, pushVersion, false)
 		if err != nil {
 			return err
 		}
+		defer session.Close()
+		ver := session.Version()
 		profiles, err := cfg.GetProfiles(pushProfile)
 		if err != nil {
 			return err
 		}
 		for _, p := range profiles {
-			if err := executePublishProfile(cfg, ver, p); err != nil {
+			if err := executePublishProfile(cfg, ver, p, session.RunID()); err != nil {
 				return err
 			}
 		}
@@ -35,12 +37,13 @@ var pushCmd = &cobra.Command{
 }
 
 func init() {
-	pushCmd.Flags().StringVarP(&pushVersion, "version", "v", "", "版本号 (默认取最新 git tag)")
+	pushCmd.Flags().StringVarP(&pushVersion, "version", "v", "", "正式 release tag（git-tag 模式下必须存在）")
 	pushCmd.Flags().StringVarP(&pushProfile, "profile", "p", "", "指定 profile 名称 (默认全部)")
 }
 
 // doPush 按当前 publish.driver 执行单个 profile 的发布。
-func doPush(cfg *internal.Config, version string, profile internal.Profile) error {
+func doPush(cfg *internal.Config, version string, profile internal.Profile, runID string) error {
+	_ = runID
 	renderedCfg, renderedProfile, err := internal.RenderConfigForProfile(cfg, profile, version)
 	if err != nil {
 		return err
@@ -80,6 +83,16 @@ func doRegistryPush(cfg *internal.Config, version string, profile internal.Profi
 			nameLabel,
 			target)
 		internal.ProgressSub(target)
+
+		// 本地 daemon 在 tag 阶段已拥有 registry 引用；与远端 manifest 比对以实现幂等/拒覆盖。
+		skip, err := internal.EnsureRegistryTagImmutable(target, target)
+		if err != nil {
+			return err
+		}
+		if skip {
+			continue
+		}
+
 		if err := internal.RunCmd(
 			[]string{"docker", "push", target},
 			target,
@@ -88,6 +101,8 @@ func doRegistryPush(cfg *internal.Config, version string, profile internal.Profi
 		}
 	}
 
+	// latest 仅为显式 promotion alias；deploy/rollback 永不修改 latest。
+	// 此处保留既有 tag_latest_on_default_profile 行为，但不对 latest 做不可变拒绝。
 	if cfg.ShouldTagLatest(profile) {
 		for _, target := range cfg.RegistryTargets("latest") {
 			fmt.Printf("  %s Push%s  %s\n",

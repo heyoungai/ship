@@ -5,15 +5,48 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gofrs/flock"
 	"github.com/pterm/pterm"
 )
 
-const historyDir = ".ship"
-const historyFile = ".ship/history.json"
+const historyDirName = ".ship"
+const historyFileName = "history.json"
+
+var (
+	stateRootMu sync.RWMutex
+	stateRoot   string // 为空时使用进程 cwd 下的 .ship
+)
+
+// SetStateRoot 固定历史等持久状态目录（通常为 InvocationRoot/.ship）。
+// SourceRoot worktree 切换 cwd 后必须设置，避免写入临时目录。
+func SetStateRoot(path string) {
+	stateRootMu.Lock()
+	defer stateRootMu.Unlock()
+	stateRoot = strings.TrimSpace(path)
+}
+
+// ClearStateRoot 清除状态目录覆盖。
+func ClearStateRoot() {
+	SetStateRoot("")
+}
+
+func historyDirPath() string {
+	stateRootMu.RLock()
+	defer stateRootMu.RUnlock()
+	if stateRoot != "" {
+		return stateRoot
+	}
+	return historyDirName
+}
+
+func historyFilePath() string {
+	return filepath.Join(historyDirPath(), historyFileName)
+}
 
 // HistoryEntry 记录一次部署操作
 type HistoryEntry struct {
@@ -32,11 +65,13 @@ func LoadHistory() ([]HistoryEntry, error) {
 // RecordDeployment 记录一次部署操作到历史。
 // 使用文件锁避免多个 ship 进程并发写入时丢失记录。
 func RecordDeployment(version, action, result, note string) error {
-	if err := os.MkdirAll(historyDir, 0755); err != nil {
+	dir := historyDirPath()
+	file := historyFilePath()
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("创建历史目录失败: %w", err)
 	}
 
-	lock := flock.New(historyFile + ".lock")
+	lock := flock.New(file + ".lock")
 	locked, err := lock.TryLock()
 	if err != nil {
 		return fmt.Errorf("获取历史文件锁失败: %w", err)
@@ -67,7 +102,7 @@ func RecordDeployment(version, action, result, note string) error {
 	if err != nil {
 		return fmt.Errorf("序列化部署历史失败: %w", err)
 	}
-	if err := os.WriteFile(historyFile, data, 0644); err != nil {
+	if err := os.WriteFile(file, data, 0644); err != nil {
 		return fmt.Errorf("写入部署历史失败: %w", err)
 	}
 	return nil
@@ -75,7 +110,7 @@ func RecordDeployment(version, action, result, note string) error {
 
 // loadHistoryUnlocked 读取历史记录（无锁版本，供持锁时调用）。
 func loadHistoryUnlocked() ([]HistoryEntry, error) {
-	data, err := os.ReadFile(historyFile)
+	data, err := os.ReadFile(historyFilePath())
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil

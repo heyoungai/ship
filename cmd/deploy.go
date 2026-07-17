@@ -18,12 +18,15 @@ var deployCmd = &cobra.Command{
 	Use:   "deploy",
 	Short: "远程部署：更新版本号并重启容器",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ver, err := internal.ResolveVersion(cfg, deployVersion)
+		// deploy 消费已发布版本，不创建 source worktree，也不修改 registry latest。
+		session, err := prepareReleaseSession(cfg, deployVersion, false)
 		if err != nil {
 			return err
 		}
+		defer session.Close()
+		ver := session.Version()
 		profile := cfg.DefaultProfile()
-		if err := executeDeployStage(cfg, ver, profile); err != nil {
+		if err := executeDeployStage(cfg, ver, profile, session); err != nil {
 			return recordDeploymentResult(err, ver, "deploy", "fail", err.Error())
 		}
 		if err := internal.ExecuteVerify(cfg, profile, ver); err != nil {
@@ -34,11 +37,12 @@ var deployCmd = &cobra.Command{
 }
 
 func init() {
-	deployCmd.Flags().StringVarP(&deployVersion, "version", "v", "", "版本号 (默认取最新 git tag)")
+	deployCmd.Flags().StringVarP(&deployVersion, "version", "v", "", "正式 release tag（git-tag 模式下必须存在）")
 }
 
 // doDeploy 按当前 deploy.driver 执行部署。
-func doDeploy(cfg *internal.Config, version string, profile internal.Profile) error {
+// session 可为 nil（测试）；非 nil 时用于将未跟踪本地文件锚定到 InvocationRoot。
+func doDeploy(cfg *internal.Config, version string, profile internal.Profile, session *releaseSession) error {
 	renderedCfg, renderedProfile, err := internal.RenderConfigForProfile(cfg, profile, version)
 	if err != nil {
 		return err
@@ -48,7 +52,7 @@ func doDeploy(cfg *internal.Config, version string, profile internal.Profile) er
 
 	switch cfg.Deploy.Driver {
 	case "compose":
-		if err := doComposeDeploy(cfg, version, profile); err != nil {
+		if err := doComposeDeploy(cfg, version, profile, session); err != nil {
 			return err
 		}
 	case "binary-install":
@@ -69,7 +73,7 @@ func doDeploy(cfg *internal.Config, version string, profile internal.Profile) er
 }
 
 // doComposeDeploy 执行 compose driver 的远程部署，并渲染 tag_key/up/path 等字段。
-func doComposeDeploy(cfg *internal.Config, version string, profile internal.Profile) error {
+func doComposeDeploy(cfg *internal.Config, version string, profile internal.Profile, session *releaseSession) error {
 	ctx := internal.NewRenderContext(cfg, profile, version)
 	host, err := ctx.RenderString(cfg.Deploy.Compose.Host)
 	if err != nil {
@@ -109,6 +113,12 @@ func doComposeDeploy(cfg *internal.Config, version string, profile internal.Prof
 	localEnvFile, err := renderOptionalComposeValue(ctx, cfg.Deploy.Compose.LocalEnvFile, "deploy.compose.local_env_file")
 	if err != nil {
 		return err
+	}
+	if session != nil {
+		localFile, localEnvFile, err = resolveComposeLocalPaths(session, localFile, localEnvFile)
+		if err != nil {
+			return err
+		}
 	}
 	if err := validateRenderedComposeConfig(host, deployPath, envFile, tagKey, up, localFile, remoteFile, localEnvFile); err != nil {
 		return err
