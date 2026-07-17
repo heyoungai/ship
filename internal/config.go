@@ -159,6 +159,9 @@ type DeployComposeConfig struct {
 	EnvFile      string `toml:"env_file"`
 	AutoEnvFile  bool   `toml:"auto_env_file"` // 当 env_file 非默认值时自动注入 --env-file 到 up 命令
 	TagKey       string `toml:"tag_key"`
+	Pin          string `toml:"pin"`         // digest | tag；默认 digest
+	DigestKey    string `toml:"digest_key"`  // 默认 APP_IMAGE_DIGEST
+	ImageKey     string `toml:"image_key"`   // 可选：写入完整 repo@sha256:...
 	Up           string `toml:"up"`
 }
 
@@ -277,6 +280,8 @@ func (c *Config) applyDefaults() {
 	c.Deploy.Compose.EnvFile = ".env"
 	c.Deploy.Compose.AutoEnvFile = true
 	c.Deploy.Compose.TagKey = "APP_IMAGE_TAG"
+	c.Deploy.Compose.Pin = "digest"
+	c.Deploy.Compose.DigestKey = "APP_IMAGE_DIGEST"
 	c.Deploy.Compose.Up = "docker compose up -d"
 	c.Deploy.Healthcheck.ApplyDefaults()
 

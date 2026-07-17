@@ -18,10 +18,14 @@ func executeBuildProfile(cfg *internal.Config, version string, profile internal.
 
 // executePublishProfile 执行单个 profile 的 pre_publish → publish → post_publish。
 func executePublishProfile(cfg *internal.Config, version string, profile internal.Profile, runID string, session *releaseSession) error {
+	return executePublishProfileWithOptions(cfg, version, profile, runID, session, false)
+}
+
+func executePublishProfileWithOptions(cfg *internal.Config, version string, profile internal.Profile, runID string, session *releaseSession, promoteLatest bool) error {
 	if err := internal.ExecuteSteps("pre_publish", cfg.Steps.PrePublish, cfg, profile, version); err != nil {
 		return err
 	}
-	if err := doPush(cfg, version, profile, runID, session); err != nil {
+	if err := doPushWithOptions(cfg, version, profile, runID, session, promoteLatest); err != nil {
 		return err
 	}
 	return internal.ExecuteSteps("post_publish", cfg.Steps.PostPublish, cfg, profile, version)

@@ -9,10 +9,11 @@ import (
 )
 
 var (
-	runVersion    string
-	runEnvFile    string
-	runProfile    string
-	runSkipDeploy bool
+	runVersion       string
+	runEnvFile       string
+	runProfile       string
+	runSkipDeploy    bool
+	runPromoteLatest bool
 )
 
 var runCmd = &cobra.Command{
@@ -85,7 +86,7 @@ var runCmd = &cobra.Command{
 		if shouldPublish {
 			internal.ProgressStep(currentStep, publishStepTitleFor(activeCfg))
 			for _, p := range profiles {
-				if err := executePublishProfile(activeCfg, ver, p, session.RunID(), session); err != nil {
+				if err := executePublishProfileWithOptions(activeCfg, ver, p, session.RunID(), session, runPromoteLatest); err != nil {
 					return err
 				}
 			}
@@ -133,6 +134,7 @@ func init() {
 	runCmd.Flags().StringVar(&runEnvFile, "env-file", "", ".env 文件路径 (默认使用配置；相对 InvocationRoot)")
 	runCmd.Flags().StringVarP(&runProfile, "profile", "p", "", "指定 profile 名称 (默认全部)")
 	runCmd.Flags().BoolVar(&runSkipDeploy, "skip-deploy", false, "跳过远程部署步骤")
+	runCmd.Flags().BoolVar(&runPromoteLatest, "promote-latest", false, "显式将 default profile 推送到 :latest")
 }
 
 func buildStepTitle() string {

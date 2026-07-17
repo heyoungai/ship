@@ -206,4 +206,9 @@ func (c *Config) validateRuntimeOptions(missing *[]string) {
 	default:
 		*missing = append(*missing, "config.unknown_keys 仅支持 error | warn | ignore")
 	}
+
+	pin := strings.ToLower(strings.TrimSpace(c.Deploy.Compose.Pin))
+	if pin != "" && pin != "digest" && pin != "tag" {
+		*missing = append(*missing, "deploy.compose.pin 仅支持 digest | tag")
+	}
 }

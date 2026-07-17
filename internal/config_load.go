@@ -123,6 +123,12 @@ func (c *Config) normalizeV2() {
 	if c.Deploy.Compose.TagKey == "" {
 		c.Deploy.Compose.TagKey = "APP_IMAGE_TAG"
 	}
+	if c.Deploy.Compose.Pin == "" {
+		c.Deploy.Compose.Pin = "digest"
+	}
+	if c.Deploy.Compose.DigestKey == "" {
+		c.Deploy.Compose.DigestKey = "APP_IMAGE_DIGEST"
+	}
 	if c.Deploy.Compose.Up == "" {
 		c.Deploy.Compose.Up = "docker compose up -d"
 	}

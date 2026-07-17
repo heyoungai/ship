@@ -263,16 +263,29 @@ func doGoBinaryBuild(cfg *internal.Config, profile internal.Profile, version str
 	); err != nil {
 		return err
 	}
-	if session != nil && session.Manifest != nil {
+
+	localPath := output
+	digest := ""
+	if session != nil {
 		pname := internal.FormatProfileName(profile)
 		if pname == "" {
 			pname = "default"
 		}
-		session.Manifest.UpsertArtifact(internal.ArtifactRecord{
-			Type:     internal.ArtifactTypeBinary,
-			Profile:  pname,
-			LocalRef: output,
-		})
+		persisted, sha, err := internal.PersistFileArtifact(session.StateRoot(), session.RunID(), pname, output)
+		if err != nil {
+			return fmt.Errorf("持久化 go-binary 产物失败: %w", err)
+		}
+		localPath = persisted
+		digest = sha
+		internal.PrintInfo(fmt.Sprintf("artifact persisted: %s (%s)", localPath, digest))
+		if session.Manifest != nil {
+			session.Manifest.UpsertArtifact(internal.ArtifactRecord{
+				Type:     internal.ArtifactTypeBinary,
+				Profile:  pname,
+				LocalRef: localPath,
+				Digest:   digest,
+			})
+		}
 	}
 	return nil
 }

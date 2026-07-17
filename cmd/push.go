@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/heyoungai/ship/internal"
@@ -10,8 +11,9 @@ import (
 )
 
 var (
-	pushVersion string
-	pushProfile string
+	pushVersion       string
+	pushProfile       string
+	pushPromoteLatest bool
 )
 
 var pushCmd = &cobra.Command{
@@ -38,7 +40,7 @@ var pushCmd = &cobra.Command{
 			return err
 		}
 		for _, p := range profiles {
-			if err := executePublishProfile(cfg, ver, p, session.RunID(), session); err != nil {
+			if err := executePublishProfileWithOptions(cfg, ver, p, session.RunID(), session, pushPromoteLatest); err != nil {
 				return err
 			}
 		}
@@ -53,10 +55,15 @@ var pushCmd = &cobra.Command{
 func init() {
 	pushCmd.Flags().StringVarP(&pushVersion, "version", "v", "", "正式 release tag（git-tag 模式下必须存在）")
 	pushCmd.Flags().StringVarP(&pushProfile, "profile", "p", "", "指定 profile 名称 (默认全部)")
+	pushCmd.Flags().BoolVar(&pushPromoteLatest, "promote-latest", false, "显式将 default profile 推送到 :latest")
 }
 
 // doPush 按当前 publish.driver 执行单个 profile 的发布。
 func doPush(cfg *internal.Config, version string, profile internal.Profile, runID string, session *releaseSession) error {
+	return doPushWithOptions(cfg, version, profile, runID, session, pushPromoteLatest)
+}
+
+func doPushWithOptions(cfg *internal.Config, version string, profile internal.Profile, runID string, session *releaseSession, promoteLatest bool) error {
 	renderedCfg, renderedProfile, err := internal.RenderConfigForProfile(cfg, profile, version)
 	if err != nil {
 		return err
@@ -66,7 +73,7 @@ func doPush(cfg *internal.Config, version string, profile internal.Profile, runI
 
 	switch cfg.Publish.Driver {
 	case "registry":
-		return doRegistryPush(cfg, version, profile, runID, session)
+		return doRegistryPush(cfg, version, profile, runID, session, promoteLatest)
 	case "scp":
 		return doSCPPush(cfg, profile, version, session)
 	case "none":
@@ -77,7 +84,7 @@ func doPush(cfg *internal.Config, version string, profile internal.Profile, runI
 	}
 }
 
-func doRegistryPush(cfg *internal.Config, version string, profile internal.Profile, runID string, session *releaseSession) error {
+func doRegistryPush(cfg *internal.Config, version string, profile internal.Profile, runID string, session *releaseSession, promoteLatest bool) error {
 	if !cfg.Publish.Registry.Push {
 		internal.PrintInfo("publish.registry.push = false，跳过 docker push")
 		return nil
@@ -135,7 +142,8 @@ func doRegistryPush(cfg *internal.Config, version string, profile internal.Profi
 		}
 	}
 
-	if cfg.ShouldTagLatest(profile) {
+	// latest：配置 tag_latest_on_default_profile 仍兼容；--promote-latest 可显式打开。
+	if promoteLatest || cfg.ShouldTagLatest(profile) {
 		for _, target := range cfg.RegistryTargets("latest") {
 			fmt.Printf("  %s Push%s  %s\n",
 				internal.StepStyle.Render("▸"),
@@ -146,7 +154,7 @@ func doRegistryPush(cfg *internal.Config, version string, profile internal.Profi
 			if len(src) > 0 {
 				_ = internal.RunCmd(
 					[]string{"docker", "tag", src[0], target},
-					fmt.Sprintf("tag → latest"),
+					"tag → latest",
 				)
 			}
 			if err := internal.RunCmd(
@@ -211,6 +219,14 @@ func doSCPPush(cfg *internal.Config, profile internal.Profile, version string, s
 	if err != nil {
 		return err
 	}
+	// 优先使用 manifest 中已持久化的产物路径（worktree 清理后仍可用）。
+	if persisted := resolvePersistedBinaryPath(profile, session); persisted != "" {
+		local = persisted
+	}
+	if _, err := os.Stat(local); err != nil {
+		return fmt.Errorf("SCP 本地产物不存在: %s；请先 ship build（产物会持久化到 .ship/artifacts）: %w", local, err)
+	}
+
 	host, err := ctx.RenderString(cfg.Publish.SCP.Host)
 	if err != nil {
 		return err
@@ -237,12 +253,49 @@ func doSCPPush(cfg *internal.Config, profile internal.Profile, version string, s
 		if pname == "" {
 			pname = "default"
 		}
+		digest := ""
+		for _, a := range session.Manifest.Artifacts {
+			if a.Type == internal.ArtifactTypeBinary {
+				ap := a.Profile
+				if ap == "" {
+					ap = "default"
+				}
+				if ap == pname && a.Digest != "" {
+					digest = a.Digest
+					break
+				}
+			}
+		}
 		session.Manifest.UpsertArtifact(internal.ArtifactRecord{
 			Type:     internal.ArtifactTypeBinary,
 			Profile:  pname,
 			LocalRef: local,
 			Ref:      remote,
+			Digest:   digest,
 		})
 	}
 	return nil
+}
+
+func resolvePersistedBinaryPath(profile internal.Profile, session *releaseSession) string {
+	if session == nil || session.Manifest == nil {
+		return ""
+	}
+	want := internal.FormatProfileName(profile)
+	if want == "" {
+		want = "default"
+	}
+	for _, a := range session.Manifest.Artifacts {
+		if a.Type != internal.ArtifactTypeBinary {
+			continue
+		}
+		ap := a.Profile
+		if ap == "" {
+			ap = "default"
+		}
+		if ap == want && strings.TrimSpace(a.LocalRef) != "" {
+			return a.LocalRef
+		}
+	}
+	return ""
 }

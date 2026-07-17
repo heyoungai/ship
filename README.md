@@ -128,14 +128,27 @@ ship --help
 - `ship doctor -v vX`：检查 tag/commit、SourceRoot 的 `ship.toml`、外部 env、docker 等运行条件。
 - `ship run` / `ship build` 会写入 `.ship/runs/<run_id>/manifest.json`；成功 publish 后更新 `.ship/releases/<version>.json`。
 - 独立 `ship push` / `ship deploy` / `ship rollback` **按 manifest 消费**：没有对应 release 档案会失败，并提示先 `ship run` 或 `build+push`。
-- 部署仍写远端 `tag_key=version`（按 digest 部署留待后续）；部署前若 manifest 有 digest 会尽量校验远端一致。
 - 部署历史会记录 `commit` / `digest` / `run_id`（兼容旧 history.json）。
+
+### Digest 部署与产物持久化（阶段三）
+
+- `deploy.compose.pin = "digest"`（默认）：部署时写入 `digest_key`（默认 `APP_IMAGE_DIGEST`），并仍写入 `tag_key=version` 作别名；无 digest 时自动降级为 `tag`。
+- 可选 `image_key`：写入完整 `registry/ns/app@sha256:...`，适配 `image: ${APP_IMAGE}`。
+- 生产 compose 推荐：
+
+```yaml
+image: registry.example.com/ns/app@${APP_IMAGE_DIGEST}
+```
+
+- Go 二进制等文件产物会复制到 `.ship/artifacts/<run_id>/`，并计算 `sha256:`；worktree 清理后仍可 `ship push`。
+- `--promote-latest`：显式推广 registry `:latest`；生产建议 `tag_latest_on_default_profile = false`，仅发布最新线时加 flag。`deploy`/`rollback` 永不改 latest。
 
 ```bash
 # 矩阵构建：指定 profile
 ./ship.exe build -p brand-a
 ./ship.exe tag -v v2.0.0 -p brand-a
 ./ship.exe push -v v2.0.0 -p brand-a
+./ship.exe push -v v2.0.0 --promote-latest
 
 # 预览计划与健康检查
 ./ship.exe plan -v v2.0.0
@@ -337,6 +350,7 @@ env = { NEXT_PUBLIC_APP_BRAND = "brand-b" }
 - `steps.*`、`templates`、`verify.*` 已接入命令执行链路
 - `version.source`、`version.fallback`、`version.override_env` 已参与实际版本解析；`git-tag` 模式还会锁定 `refs/tags/<version>` 对应 commit，并在 worktree 中构建
 - `ship plan` / `ship doctor` 与 release manifest（`.ship/runs` / `.ship/releases`）已接入；独立 push/deploy 按 manifest 消费
+- compose 支持 `pin=digest` 写入 `APP_IMAGE_DIGEST`；Go 产物持久化到 `.ship/artifacts`；`--promote-latest` 显式推广 latest
 - `deploy` / `rollback` 不修改 registry `latest`；正式版本 push 默认拒绝同 tag 不同 digest 覆盖
 - 历史记录写入与配置校验不再静默失败，错误会直接向上返回；history 可含 commit/digest/run_id
 - 阶段输出、历史表格和提示已切到 PTerm，避免继续维护手写进度输出

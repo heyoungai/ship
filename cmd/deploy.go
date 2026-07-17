@@ -34,27 +34,18 @@ var deployCmd = &cobra.Command{
 		if !manifest.HasPublishedImage() && cfg.Build.Driver == "docker" && cfg.Publish.Driver == "registry" {
 			return fmt.Errorf("版本 %s 的 manifest 中没有已发布的 container-image；请先 ship run 或 ship push", ver)
 		}
+
+		pin, degraded := internal.ResolveComposePin(cfg.Deploy.Compose.Pin, manifest.PrimaryImageDigest())
+		if degraded {
+			internal.PrintWarning("manifest 无 digest，deploy.compose.pin 降级为 tag")
+		}
+		if err := verifyManifestDigests(manifest, pin == "digest"); err != nil {
+			return err
+		}
 		if digest := manifest.PrimaryImageDigest(); digest != "" {
-			internal.PrintInfo(fmt.Sprintf("deploy from manifest: run_id=%s digest=%s", manifest.RunID, digest))
-			// 部署前校验远端 digest（若可获取）与 manifest 一致。
-			for _, a := range manifest.Artifacts {
-				if a.Type != internal.ArtifactTypeImage || a.Ref == "" || a.Digest == "" {
-					continue
-				}
-				remote, exists, err := internal.InspectRemoteDigest(a.Ref)
-				if err != nil {
-					internal.PrintWarning(fmt.Sprintf("无法校验远端 digest (%s): %v", a.Ref, err))
-					continue
-				}
-				if exists {
-					got := primaryDigestToken(remote)
-					if got != "" && got != a.Digest && !strings.HasPrefix(remote, a.Digest) {
-						return fmt.Errorf("远端 %s digest 与 manifest 不一致：remote=%s manifest=%s", a.Ref, got, a.Digest)
-					}
-				}
-			}
+			internal.PrintInfo(fmt.Sprintf("deploy from manifest: run_id=%s digest=%s pin=%s", manifest.RunID, digest, pin))
 		} else {
-			internal.PrintInfo(fmt.Sprintf("deploy from manifest: run_id=%s (no digest recorded)", manifest.RunID))
+			internal.PrintInfo(fmt.Sprintf("deploy from manifest: run_id=%s pin=%s (no digest)", manifest.RunID, pin))
 		}
 
 		profile := cfg.DefaultProfile()
@@ -159,7 +150,6 @@ func doComposeDeploy(cfg *internal.Config, version string, profile internal.Prof
 	deployPath = strings.TrimRight(deployPath, "/")
 	remoteEnvFile := composeRemotePath(deployPath, envFile)
 	remoteComposeFile := composeRemoteFilePath(deployPath, remoteFile, localFile)
-	internal.PrintInfo(fmt.Sprintf("compose deploy: host=%s path=%s env_file=%s compose_file=%s tag_key=%s version=%s", host, deployPath, remoteEnvFile, remoteComposeFile, tagKey, version))
 	if err := ensureRemoteComposePaths(host, deployPath, remoteEnvFile, remoteComposeFile); err != nil {
 		return err
 	}
@@ -169,19 +159,14 @@ func doComposeDeploy(cfg *internal.Config, version string, profile internal.Prof
 	if err := uploadComposeArtifact(host, localEnvFile, remoteEnvFile, ".env file"); err != nil {
 		return err
 	}
-	tagLine := fmt.Sprintf("%s=%s", tagKey, version)
-	updateEnvCmd := fmt.Sprintf(
-		"set -e; env_file=%s; tmp_file=\"${env_file}.ship.tmp\"; if [ -f \"$env_file\" ]; then grep -v '^%s=' \"$env_file\" > \"$tmp_file\"; else : > \"$tmp_file\"; fi; printf '%%s\\n' %s >> \"$tmp_file\"; mv \"$tmp_file\" \"$env_file\"",
-		internal.ShellEscape(remoteEnvFile),
-		tagKey,
-		internal.ShellEscape(tagLine),
-	)
-	internal.ProgressSub(fmt.Sprintf("ssh %s: 更新 .env", host))
-	if err := internal.RunCmd(
-		[]string{"ssh", host, updateEnvCmd},
-		fmt.Sprintf("ssh %s: 更新 .env", host),
-	); err != nil {
-		return fmt.Errorf("compose deploy 更新 env 失败: host=%s env_file=%s tag_key=%s: %w", host, remoteEnvFile, tagKey, err)
+
+	envUpdates, err := composeEnvUpdates(cfg, version, profile, session)
+	if err != nil {
+		return err
+	}
+	internal.PrintInfo(fmt.Sprintf("compose deploy: host=%s path=%s env_file=%s compose_file=%s updates=%v", host, deployPath, remoteEnvFile, remoteComposeFile, envUpdates))
+	if err := updateRemoteEnvKeys(host, remoteEnvFile, envUpdates); err != nil {
+		return err
 	}
 
 	restartCmd := fmt.Sprintf("set -e; cd %s && %s", internal.ShellEscape(deployPath), up)
@@ -193,6 +178,148 @@ func doComposeDeploy(cfg *internal.Config, version string, profile internal.Prof
 		return fmt.Errorf("compose deploy 重启失败: host=%s path=%s up=%s: %w", host, deployPath, up, err)
 	}
 
+	return nil
+}
+
+// composeEnvUpdates 按 pin 模式生成远端 env 键值。
+func composeEnvUpdates(cfg *internal.Config, version string, profile internal.Profile, session *releaseSession) (map[string]string, error) {
+	tagKey := strings.TrimSpace(cfg.Deploy.Compose.TagKey)
+	if tagKey == "" {
+		return nil, fmt.Errorf("deploy.compose.tag_key 不能为空")
+	}
+	updates := map[string]string{tagKey: version}
+
+	digest := ""
+	imageRef := ""
+	if session != nil && session.Manifest != nil {
+		art := selectImageArtifact(session.Manifest, profile)
+		digest = art.Digest
+		imageRef = art.Ref
+	}
+
+	pin, degraded := internal.ResolveComposePin(cfg.Deploy.Compose.Pin, digest)
+	if degraded {
+		internal.PrintWarning("manifest 无 digest，本次部署 pin 降级为 tag")
+	}
+	if pin == "digest" {
+		digestKey := strings.TrimSpace(cfg.Deploy.Compose.DigestKey)
+		if digestKey == "" {
+			digestKey = "APP_IMAGE_DIGEST"
+		}
+		updates[digestKey] = digest
+		if imageKey := strings.TrimSpace(cfg.Deploy.Compose.ImageKey); imageKey != "" {
+			full := internal.ImageDigestRef(imageRef, digest)
+			if full == "" {
+				return nil, fmt.Errorf("pin=digest 且配置了 image_key，但无法从 manifest 构造 repo@digest")
+			}
+			updates[imageKey] = full
+		}
+	}
+	return updates, nil
+}
+
+func selectImageArtifact(m *internal.ReleaseManifest, profile internal.Profile) internal.ArtifactRecord {
+	if m == nil {
+		return internal.ArtifactRecord{}
+	}
+	want := internal.FormatProfileName(profile)
+	if want == "" {
+		want = "default"
+	}
+	var fallback internal.ArtifactRecord
+	for _, a := range m.Artifacts {
+		if a.Type != internal.ArtifactTypeImage {
+			continue
+		}
+		ap := a.Profile
+		if ap == "" {
+			ap = "default"
+		}
+		if fallback.Ref == "" {
+			fallback = a
+		}
+		if ap == want {
+			return a
+		}
+	}
+	return fallback
+}
+
+// updateRemoteEnvKeys 在远端 env 文件中写入/替换多个 KEY=VALUE。
+func updateRemoteEnvKeys(host, remoteEnvFile string, updates map[string]string) error {
+	if len(updates) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(updates))
+	for k := range updates {
+		keys = append(keys, k)
+	}
+	// 稳定顺序便于测试与日志
+	for i := 0; i < len(keys); i++ {
+		for j := i + 1; j < len(keys); j++ {
+			if keys[j] < keys[i] {
+				keys[i], keys[j] = keys[j], keys[i]
+			}
+		}
+	}
+
+	var b strings.Builder
+	b.WriteString("set -e; env_file=")
+	b.WriteString(internal.ShellEscape(remoteEnvFile))
+	b.WriteString("; tmp_file=\"${env_file}.ship.tmp\"; ")
+	b.WriteString(": > \"$tmp_file\"; ")
+	b.WriteString("if [ -f \"$env_file\" ]; then ")
+	// 过滤掉将要更新的 key
+	grepArgs := make([]string, 0, len(keys))
+	for _, k := range keys {
+		grepArgs = append(grepArgs, fmt.Sprintf("-e '^%s='", k))
+	}
+	b.WriteString("grep -v ")
+	b.WriteString(strings.Join(grepArgs, " "))
+	b.WriteString(" \"$env_file\" > \"$tmp_file\" || true; fi; ")
+	for _, k := range keys {
+		line := fmt.Sprintf("%s=%s", k, updates[k])
+		b.WriteString(fmt.Sprintf("printf '%%s\\n' %s >> \"$tmp_file\"; ", internal.ShellEscape(line)))
+	}
+	b.WriteString("mv \"$tmp_file\" \"$env_file\"")
+
+	internal.ProgressSub(fmt.Sprintf("ssh %s: 更新 .env (%s)", host, strings.Join(keys, ",")))
+	if err := internal.RunCmd(
+		[]string{"ssh", host, b.String()},
+		fmt.Sprintf("ssh %s: 更新 .env", host),
+	); err != nil {
+		return fmt.Errorf("compose deploy 更新 env 失败: host=%s env_file=%s: %w", host, remoteEnvFile, err)
+	}
+	return nil
+}
+
+func verifyManifestDigests(manifest *internal.ReleaseManifest, hardFail bool) error {
+	if manifest == nil {
+		return nil
+	}
+	for _, a := range manifest.Artifacts {
+		if a.Type != internal.ArtifactTypeImage || a.Ref == "" || a.Digest == "" {
+			continue
+		}
+		remote, exists, err := internal.InspectRemoteDigest(a.Ref)
+		if err != nil {
+			if hardFail {
+				return fmt.Errorf("无法校验远端 digest (%s): %w", a.Ref, err)
+			}
+			internal.PrintWarning(fmt.Sprintf("无法校验远端 digest (%s): %v", a.Ref, err))
+			continue
+		}
+		if !exists {
+			if hardFail {
+				return fmt.Errorf("远端不存在镜像 %s，无法按 digest 部署", a.Ref)
+			}
+			continue
+		}
+		got := primaryDigestToken(remote)
+		if got != "" && got != a.Digest && !strings.HasPrefix(remote, a.Digest) {
+			return fmt.Errorf("远端 %s digest 与 manifest 不一致：remote=%s manifest=%s", a.Ref, got, a.Digest)
+		}
+	}
 	return nil
 }
 
