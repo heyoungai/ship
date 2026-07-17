@@ -1,3 +1,7 @@
+# ship v3：Artifact-centric Release Engine
+
+> Git tag、源码快照、产物不可变性与 worktree 执行边界的权威设计，见 [Git Tag 真实版本构建策略](git-tag-release-strategy.md)。该策略是 Release Plan 和 Artifact Manifest 成立的前提。
+
 更稳妥的定义是：
 
 > v3 = 从“按命令串联的发布工具”，升级为“以产物为中心、由计划驱动、可观测的发布执行器”。
@@ -174,6 +178,7 @@ ship run --log-file .ship\runs\<run-id>.jsonl
 
 | 能力 | 原因 |
 |---|---|
+| Release Identity 与 Source Snapshot | 先锁定 version/ref/commit，才能保证 Plan 和 Artifact 对应真实源码 |
 | schema 3 和 v2 配置迁移 | 新领域模型需要配置承载 |
 | Release Plan | plan、doctor、执行统一的基础 |
 | Artifact Manifest | v3 的核心价值 |
@@ -470,14 +475,15 @@ ship migrate --to 3 --check
 ## 八、推荐实施顺序
 
 1. 定义 v3 领域词汇和 ADR
-2. 引入 Config Compiler 和 Release Plan，保持现有行为不变
-3. 让现有 `run/build/push/deploy` 全部执行 Plan
-4. 引入 Context、Executor、Execution Events
-5. 引入 Artifact Manifest 和 Run State Store
-6. 重构 Docker/Go/publish/deploy adapters
-7. 增加 plan、doctor 和 JSON 输出
-8. 再做缓存、多平台和并行
-9. 最后做 SBOM、provenance、容器化 step 和 promotion
+2. 引入 Release Identity、Execution Roots 和基于 Git worktree 的 Source Snapshot
+3. 引入 Config Compiler 和 Release Plan，先把现有行为编译为显式计划
+4. 让现有 `run/build/push/deploy` 全部执行 Plan
+5. 引入 Context、Executor、Execution Events
+6. 引入 Artifact Manifest 和 Run State Store
+7. 重构 Docker/Go/publish/deploy adapters
+8. 增加 plan、doctor 和 JSON 输出
+9. 再做缓存、多平台和并行
+10. 最后做 SBOM、provenance、容器化 step 和 promotion
 
 所以我的最终判断是：
 
@@ -486,5 +492,3 @@ ship migrate --to 3 --check
 - **v3.0.0 应聚焦 Plan、Artifact、Executor、Event、Environment 五个基础模型。**
 - **缓存、并行、供应链安全和容器化 step 应建立在这些基础上，以 v3.1/v3.2 逐步交付。**
 - **v3 的成功标准不是功能数量，而是以后增加 driver、产物类型和发布目标时，不再需要同时修改多个命令文件。**
-
-本轮只完成了构思和仓库分析，没有修改任何文件。
