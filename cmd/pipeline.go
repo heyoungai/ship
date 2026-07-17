@@ -3,32 +3,31 @@ package cmd
 import "github.com/heyoungai/ship/internal"
 
 // executeBuildProfile 执行单个 profile 的 prepare → templates → build → post_build。
-func executeBuildProfile(cfg *internal.Config, version string, profile internal.Profile, envFile, runID string) error {
+func executeBuildProfile(cfg *internal.Config, version string, profile internal.Profile, envFile, runID string, session *releaseSession) error {
 	if err := internal.ExecuteSteps("prepare", cfg.Steps.Prepare, cfg, profile, version); err != nil {
 		return err
 	}
 	if err := internal.ExecuteTemplates(cfg, profile, version); err != nil {
 		return err
 	}
-	if err := doBuild(cfg, profile, envFile, version, runID); err != nil {
+	if err := doBuild(cfg, profile, envFile, version, runID, session); err != nil {
 		return err
 	}
 	return internal.ExecuteSteps("post_build", cfg.Steps.PostBuild, cfg, profile, version)
 }
 
 // executePublishProfile 执行单个 profile 的 pre_publish → publish → post_publish。
-func executePublishProfile(cfg *internal.Config, version string, profile internal.Profile, runID string) error {
+func executePublishProfile(cfg *internal.Config, version string, profile internal.Profile, runID string, session *releaseSession) error {
 	if err := internal.ExecuteSteps("pre_publish", cfg.Steps.PrePublish, cfg, profile, version); err != nil {
 		return err
 	}
-	if err := doPush(cfg, version, profile, runID); err != nil {
+	if err := doPush(cfg, version, profile, runID, session); err != nil {
 		return err
 	}
 	return internal.ExecuteSteps("post_publish", cfg.Steps.PostPublish, cfg, profile, version)
 }
 
 // executeDeployStage 执行 pre_deploy → deploy → post_deploy。
-// deploy/rollback 不修改 registry latest；session 用于把外部本地文件锚定到 InvocationRoot。
 func executeDeployStage(cfg *internal.Config, version string, profile internal.Profile, session *releaseSession) error {
 	if err := internal.ExecuteSteps("pre_deploy", cfg.Steps.PreDeploy, cfg, profile, version); err != nil {
 		return err

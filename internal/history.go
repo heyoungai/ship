@@ -50,11 +50,23 @@ func historyFilePath() string {
 
 // HistoryEntry 记录一次部署操作
 type HistoryEntry struct {
-	Version string `json:"version"`
-	Time    string `json:"time"`
-	Action  string `json:"action"` // deploy | rollback
-	Result  string `json:"result"` // success | fail
-	Note    string `json:"note,omitempty"`
+	Version     string `json:"version"`
+	Time        string `json:"time"`
+	Action      string `json:"action"` // deploy | rollback
+	Result      string `json:"result"` // success | fail
+	Note        string `json:"note,omitempty"`
+	Commit      string `json:"commit,omitempty"`
+	Digest      string `json:"digest,omitempty"`
+	RunID       string `json:"run_id,omitempty"`
+	Environment string `json:"environment,omitempty"`
+}
+
+// HistoryMeta 可选的扩展历史字段。
+type HistoryMeta struct {
+	Commit      string
+	Digest      string
+	RunID       string
+	Environment string
 }
 
 // LoadHistory 读取部署历史记录。
@@ -63,8 +75,12 @@ func LoadHistory() ([]HistoryEntry, error) {
 }
 
 // RecordDeployment 记录一次部署操作到历史。
-// 使用文件锁避免多个 ship 进程并发写入时丢失记录。
 func RecordDeployment(version, action, result, note string) error {
+	return RecordDeploymentWithMeta(version, action, result, note, HistoryMeta{})
+}
+
+// RecordDeploymentWithMeta 记录部署历史，并写入 commit/digest/run_id 等扩展字段。
+func RecordDeploymentWithMeta(version, action, result, note string, meta HistoryMeta) error {
 	dir := historyDirPath()
 	file := historyFilePath()
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -86,11 +102,15 @@ func RecordDeployment(version, action, result, note string) error {
 		return err
 	}
 	entries = append(entries, HistoryEntry{
-		Version: version,
-		Time:    time.Now().Format("2006-01-02 15:04:05"),
-		Action:  action,
-		Result:  result,
-		Note:    note,
+		Version:     version,
+		Time:        time.Now().Format("2006-01-02 15:04:05"),
+		Action:      action,
+		Result:      result,
+		Note:        note,
+		Commit:      meta.Commit,
+		Digest:      meta.Digest,
+		RunID:       meta.RunID,
+		Environment: meta.Environment,
 	})
 
 	// 保留最近 100 条
@@ -191,7 +211,7 @@ func FormatHistory(entries []HistoryEntry, limit int) string {
 		start = len(entries) - limit
 	}
 
-	data := pterm.TableData{{"时间", "操作", "版本", "备注"}}
+	data := pterm.TableData{{"时间", "操作", "版本", "commit", "digest", "备注"}}
 	for _, e := range entries[start:] {
 		action := "部署"
 		if e.Result == "fail" {
@@ -207,7 +227,19 @@ func FormatHistory(entries []HistoryEntry, limit int) string {
 		if note == "" {
 			note = "-"
 		}
-		data = append(data, []string{e.Time, action, e.Version, note})
+		commit := e.Commit
+		if commit == "" {
+			commit = "-"
+		} else if len(commit) > 7 {
+			commit = commit[:7]
+		}
+		digest := e.Digest
+		if digest == "" {
+			digest = "-"
+		} else if len(digest) > 19 {
+			digest = digest[:19] + "…"
+		}
+		data = append(data, []string{e.Time, action, e.Version, commit, digest, note})
 	}
 
 	rendered, err := pterm.DefaultTable.WithHasHeader().WithData(data).Srender()

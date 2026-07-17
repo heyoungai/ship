@@ -32,27 +32,34 @@ var buildCmd = &cobra.Command{
 		}()
 
 		version := session.Version()
-		envFile, err := resolveExternalEnvFile(session, cfg, buildEnvFile)
+		activeCfg := session.Config
+		if activeCfg == nil {
+			activeCfg = cfg
+		}
+		envFile, err := resolveExternalEnvFile(session, activeCfg, buildEnvFile)
 		if err != nil {
 			return err
 		}
-		profiles, err := cfg.GetProfiles(buildProfile)
+		profiles, err := activeCfg.GetProfiles(buildProfile)
 		if err != nil {
 			return err
 		}
 		internal.ProgressInit(len(profiles))
 		for i, p := range profiles {
 			internal.ProgressStep(i+1, buildStepTitle())
-			// 独立 build：使用 runID 隔离并发，并额外打上兼容本地 tag，供后续独立 tag/push 消费。
-			if err := executeBuildProfile(cfg, version, p, envFile, session.RunID()); err != nil {
+			if err := executeBuildProfile(activeCfg, version, p, envFile, session.RunID(), session); err != nil {
 				return err
 			}
-			if cfg.Build.Driver == "docker" {
-				if err := aliasBuildTagToLegacy(cfg, p, version, session.RunID()); err != nil {
+			if activeCfg.Build.Driver == "docker" {
+				if err := aliasBuildTagToLegacy(activeCfg, p, version, session.RunID()); err != nil {
 					return err
 				}
 			}
 		}
+		if err := session.saveManifest(false); err != nil {
+			return fmt.Errorf("保存 build manifest 失败: %w", err)
+		}
+		internal.PrintInfo(fmt.Sprintf("manifest saved: %s", internal.RunManifestPath(session.StateRoot(), session.RunID())))
 		return nil
 	},
 }
@@ -64,7 +71,7 @@ func init() {
 }
 
 // doBuild 按当前 build.driver 执行单个 profile 的构建。
-func doBuild(cfg *internal.Config, profile internal.Profile, envFile, version, runID string) error {
+func doBuild(cfg *internal.Config, profile internal.Profile, envFile, version, runID string, session *releaseSession) error {
 	renderedCfg, renderedProfile, err := internal.RenderConfigForProfile(cfg, profile, version)
 	if err != nil {
 		return err
@@ -74,9 +81,9 @@ func doBuild(cfg *internal.Config, profile internal.Profile, envFile, version, r
 
 	switch cfg.Build.Driver {
 	case "docker":
-		return doDockerBuild(cfg, profile, envFile, version, runID)
+		return doDockerBuild(cfg, profile, envFile, version, runID, session)
 	case "go-binary":
-		return doGoBinaryBuild(cfg, profile, version)
+		return doGoBinaryBuild(cfg, profile, version, session)
 	case "command":
 		return doCommandBuild(cfg, profile, version)
 	default:
@@ -85,7 +92,7 @@ func doBuild(cfg *internal.Config, profile internal.Profile, envFile, version, r
 }
 
 // doDockerBuild 执行 Docker driver 的构建，并对 v2 模板变量做渲染。
-func doDockerBuild(cfg *internal.Config, profile internal.Profile, envFile, version, runID string) error {
+func doDockerBuild(cfg *internal.Config, profile internal.Profile, envFile, version, runID string, session *releaseSession) error {
 	ctx := internal.NewRenderContext(cfg, profile, version)
 	if envFile == "" {
 		envFile = cfg.Build.EnvFile
@@ -177,11 +184,15 @@ func doDockerBuild(cfg *internal.Config, profile internal.Profile, envFile, vers
 		return err
 	}
 
+	if session != nil {
+		platform := cfg.Build.Platforms
+		session.recordImageArtifact(profile, platform, cfg.ImageRef(tag), "", "")
+	}
 	return nil
 }
 
 // doGoBinaryBuild 执行 Go 二进制构建，并渲染 output / ldflags 等模板变量。
-func doGoBinaryBuild(cfg *internal.Config, profile internal.Profile, version string) error {
+func doGoBinaryBuild(cfg *internal.Config, profile internal.Profile, version string, session *releaseSession) error {
 	ctx := internal.NewRenderContext(cfg, profile, version)
 	name := internal.FormatProfileName(profile)
 	nameLabel := ""
@@ -244,12 +255,26 @@ func doGoBinaryBuild(cfg *internal.Config, profile internal.Profile, version str
 		envMap["CGO_ENABLED"] = "0"
 	}
 
-	return internal.RunCmdWithOptions(
+	if err := internal.RunCmdWithOptions(
 		args,
 		fmt.Sprintf("go build%s -> %s", nameLabel, output),
 		"",
 		envMap,
-	)
+	); err != nil {
+		return err
+	}
+	if session != nil && session.Manifest != nil {
+		pname := internal.FormatProfileName(profile)
+		if pname == "" {
+			pname = "default"
+		}
+		session.Manifest.UpsertArtifact(internal.ArtifactRecord{
+			Type:     internal.ArtifactTypeBinary,
+			Profile:  pname,
+			LocalRef: output,
+		})
+	}
+	return nil
 }
 
 // doCommandBuild 执行 command driver 的构建命令，并渲染 run/cwd/env。

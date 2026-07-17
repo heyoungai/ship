@@ -9,17 +9,20 @@ import (
 	"github.com/heyoungai/ship/internal"
 )
 
-// releaseSession 绑定一次命令执行的 identity 与执行根目录。
+// releaseSession 绑定一次命令执行的 identity、recipe 与执行根目录。
 type releaseSession struct {
 	Identity internal.ReleaseIdentity
 	Roots    internal.ExecutionRoots
 	Snapshot *internal.SourceSnapshot
+	Config   *internal.Config
+	Manifest *internal.ReleaseManifest
 }
 
 // prepareReleaseSession 解析 ReleaseIdentity，并在需要时创建 SourceRoot worktree。
+// withSnapshot 时会从 SourceRoot 重载 ship.toml 作为 release recipe（两阶段配置）。
 // 调用方必须 defer session.Close()。
-func prepareReleaseSession(cfg *internal.Config, versionFlag string, withSnapshot bool) (*releaseSession, error) {
-	identity, err := internal.ResolveReleaseIdentity(cfg, versionFlag)
+func prepareReleaseSession(bootstrap *internal.Config, versionFlag string, withSnapshot bool) (*releaseSession, error) {
+	identity, err := internal.ResolveReleaseIdentity(bootstrap, versionFlag)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +33,10 @@ func prepareReleaseSession(cfg *internal.Config, versionFlag string, withSnapsho
 		return nil, fmt.Errorf("获取 InvocationRoot 失败: %w", err)
 	}
 
-	session := &releaseSession{Identity: identity}
+	session := &releaseSession{
+		Identity: identity,
+		Config:   bootstrap,
+	}
 	if !withSnapshot {
 		runID, err := newStandaloneRunID()
 		if err != nil {
@@ -43,6 +49,7 @@ func prepareReleaseSession(cfg *internal.Config, versionFlag string, withSnapsho
 			RunID:          runID,
 		}
 		internal.SetStateRoot(session.Roots.StateRoot)
+		session.Manifest = internal.NewReleaseManifest(identity, runID, Version)
 		return session, nil
 	}
 
@@ -59,6 +66,20 @@ func prepareReleaseSession(cfg *internal.Config, versionFlag string, withSnapsho
 		_ = snap.Close()
 		return nil, err
 	}
+
+	// 两阶段配置：从 SourceRoot 重载 recipe，不再重新解析 version/commit。
+	if identity.NeedsSourceSnapshot() {
+		recipe, err := internal.LoadConfigFrom(session.Roots.SourceRoot, os.Getenv("IMAGE_NAME"))
+		if err != nil {
+			_ = session.Close()
+			return nil, fmt.Errorf("从 SourceRoot 加载 release recipe 失败: %w", err)
+		}
+		session.Config = recipe
+		cfg = recipe // 保持全局 cfg 与 recipe 一致，供后续 pipeline 使用
+		internal.PrintInfo(fmt.Sprintf("release recipe loaded from SourceRoot (%s)", session.Roots.SourceRoot))
+	}
+
+	session.Manifest = internal.NewReleaseManifest(identity, session.Roots.RunID, Version)
 	return session, nil
 }
 
@@ -87,6 +108,41 @@ func (s *releaseSession) InvocationRoot() string {
 	return s.Roots.InvocationRoot
 }
 
+func (s *releaseSession) SourceRoot() string {
+	return s.Roots.SourceRoot
+}
+
+func (s *releaseSession) StateRoot() string {
+	return s.Roots.StateRoot
+}
+
+// saveManifest 将当前 manifest 落盘；indexRelease 为 true 时同时更新 releases/<version>.json。
+func (s *releaseSession) saveManifest(indexRelease bool) error {
+	if s == nil || s.Manifest == nil {
+		return nil
+	}
+	return internal.SaveReleaseManifest(s.StateRoot(), s.Manifest, indexRelease)
+}
+
+// recordImageArtifact 记录 docker 镜像产物（build/tag/push 阶段渐进补全）。
+func (s *releaseSession) recordImageArtifact(profile internal.Profile, platform, localRef, remoteRef, digest string) {
+	if s == nil || s.Manifest == nil {
+		return
+	}
+	name := internal.FormatProfileName(profile)
+	if name == "" {
+		name = "default"
+	}
+	s.Manifest.UpsertArtifact(internal.ArtifactRecord{
+		Type:     internal.ArtifactTypeImage,
+		Profile:  name,
+		Platform: platform,
+		LocalRef: localRef,
+		Ref:      remoteRef,
+		Digest:   digest,
+	})
+}
+
 // resolveExternalEnvFile 将 CLI / 配置中的 env 文件解析为 InvocationRoot 绝对路径。
 func resolveExternalEnvFile(session *releaseSession, cfg *internal.Config, cliEnvFile string) (string, error) {
 	path := strings.TrimSpace(cliEnvFile)
@@ -96,7 +152,6 @@ func resolveExternalEnvFile(session *releaseSession, cfg *internal.Config, cliEn
 	if path == "" {
 		return "", nil
 	}
-	// 模板变量在 build 阶段再渲染；此处仅处理字面相对路径。
 	if strings.Contains(path, "{{") {
 		return path, nil
 	}
@@ -107,10 +162,15 @@ func newStandaloneRunID() (string, error) {
 	return internal.NewRunID()
 }
 
-// resolveComposeLocalPaths 将 compose 本地上传源解析为 InvocationRoot 绝对路径。
+// resolveComposeLocalPaths 将 compose 本地上传源解析为正确根目录的绝对路径。
+// local_file（版本化物料）→ SourceRoot；local_env_file（外部输入）→ InvocationRoot。
 func resolveComposeLocalPaths(session *releaseSession, localFile, localEnvFile string) (string, string, error) {
 	var err error
-	if localFile, err = absIfLiteral(session.InvocationRoot(), localFile); err != nil {
+	sourceRoot := session.InvocationRoot()
+	if session.SourceRoot() != "" {
+		sourceRoot = session.SourceRoot()
+	}
+	if localFile, err = absIfLiteral(sourceRoot, localFile); err != nil {
 		return "", "", err
 	}
 	if localEnvFile, err = absIfLiteral(session.InvocationRoot(), localEnvFile); err != nil {

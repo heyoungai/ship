@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/heyoungai/ship/internal"
 
@@ -23,15 +24,28 @@ var pushCmd = &cobra.Command{
 		}
 		defer session.Close()
 		ver := session.Version()
+
+		// 独立 push：必须已有 build 写入的 release manifest。
+		existing, err := internal.RequireReleaseManifest(session.StateRoot(), ver)
+		if err != nil {
+			return err
+		}
+		session.Manifest = existing
+		internal.PrintInfo(fmt.Sprintf("using release manifest run_id=%s artifacts=%d", existing.RunID, len(existing.Artifacts)))
+
 		profiles, err := cfg.GetProfiles(pushProfile)
 		if err != nil {
 			return err
 		}
 		for _, p := range profiles {
-			if err := executePublishProfile(cfg, ver, p, session.RunID()); err != nil {
+			if err := executePublishProfile(cfg, ver, p, session.RunID(), session); err != nil {
 				return err
 			}
 		}
+		if err := session.saveManifest(true); err != nil {
+			return fmt.Errorf("保存 release manifest 失败: %w", err)
+		}
+		internal.PrintInfo(fmt.Sprintf("release indexed: %s", internal.ReleaseIndexPath(session.StateRoot(), ver)))
 		return nil
 	},
 }
@@ -42,8 +56,7 @@ func init() {
 }
 
 // doPush 按当前 publish.driver 执行单个 profile 的发布。
-func doPush(cfg *internal.Config, version string, profile internal.Profile, runID string) error {
-	_ = runID
+func doPush(cfg *internal.Config, version string, profile internal.Profile, runID string, session *releaseSession) error {
 	renderedCfg, renderedProfile, err := internal.RenderConfigForProfile(cfg, profile, version)
 	if err != nil {
 		return err
@@ -53,9 +66,9 @@ func doPush(cfg *internal.Config, version string, profile internal.Profile, runI
 
 	switch cfg.Publish.Driver {
 	case "registry":
-		return doRegistryPush(cfg, version, profile)
+		return doRegistryPush(cfg, version, profile, runID, session)
 	case "scp":
-		return doSCPPush(cfg, profile, version)
+		return doSCPPush(cfg, profile, version, session)
 	case "none":
 		internal.PrintInfo("当前配置未启用发布阶段")
 		return nil
@@ -64,7 +77,7 @@ func doPush(cfg *internal.Config, version string, profile internal.Profile, runI
 	}
 }
 
-func doRegistryPush(cfg *internal.Config, version string, profile internal.Profile) error {
+func doRegistryPush(cfg *internal.Config, version string, profile internal.Profile, runID string, session *releaseSession) error {
 	if !cfg.Publish.Registry.Push {
 		internal.PrintInfo("publish.registry.push = false，跳过 docker push")
 		return nil
@@ -77,6 +90,9 @@ func doRegistryPush(cfg *internal.Config, version string, profile internal.Profi
 		nameLabel = " " + internal.BoldStyle.Render("["+name+"]")
 	}
 
+	// 优先使用 manifest 中的本地引用；否则回退到本次 runID / 兼容 tag。
+	localRef := resolveLocalImageRef(cfg, profile, runID, session)
+
 	for _, target := range cfg.RegistryTargets(remoteTag) {
 		fmt.Printf("  %s Push%s  → %s\n",
 			internal.StepStyle.Render("▸"),
@@ -84,25 +100,41 @@ func doRegistryPush(cfg *internal.Config, version string, profile internal.Profi
 			target)
 		internal.ProgressSub(target)
 
-		// 本地 daemon 在 tag 阶段已拥有 registry 引用；与远端 manifest 比对以实现幂等/拒覆盖。
+		// 若本地引用与目标不同，先确保已 tag。
+		if localRef != "" && localRef != target {
+			if err := internal.RunCmd(
+				[]string{"docker", "tag", localRef, target},
+				fmt.Sprintf("tag %s → %s", localRef, target),
+			); err != nil {
+				return err
+			}
+		}
+
 		skip, err := internal.EnsureRegistryTagImmutable(target, target)
 		if err != nil {
 			return err
 		}
-		if skip {
-			continue
+		if !skip {
+			if err := internal.RunCmd(
+				[]string{"docker", "push", target},
+				target,
+			); err != nil {
+				return err
+			}
 		}
 
-		if err := internal.RunCmd(
-			[]string{"docker", "push", target},
-			target,
-		); err != nil {
-			return err
+		digest := ""
+		if d, exists, err := internal.InspectRemoteDigest(target); err == nil && exists {
+			digest = primaryDigestToken(d)
+		} else if localDigest, err := internal.InspectLocalDigest(target); err == nil {
+			digest = primaryDigestToken(localDigest)
+		}
+		if session != nil {
+			platform := cfg.Build.Platforms
+			session.recordImageArtifact(profile, platform, localRef, target, digest)
 		}
 	}
 
-	// latest 仅为显式 promotion alias；deploy/rollback 永不修改 latest。
-	// 此处保留既有 tag_latest_on_default_profile 行为，但不对 latest 做不可变拒绝。
 	if cfg.ShouldTagLatest(profile) {
 		for _, target := range cfg.RegistryTargets("latest") {
 			fmt.Printf("  %s Push%s  %s\n",
@@ -110,6 +142,13 @@ func doRegistryPush(cfg *internal.Config, version string, profile internal.Profi
 				nameLabel,
 				internal.DimStyle.Render("→ latest"))
 			internal.ProgressSub(target)
+			src := cfg.RegistryTargets(remoteTag)
+			if len(src) > 0 {
+				_ = internal.RunCmd(
+					[]string{"docker", "tag", src[0], target},
+					fmt.Sprintf("tag → latest"),
+				)
+			}
 			if err := internal.RunCmd(
 				[]string{"docker", "push", target},
 				target,
@@ -122,8 +161,45 @@ func doRegistryPush(cfg *internal.Config, version string, profile internal.Profi
 	return nil
 }
 
+func resolveLocalImageRef(cfg *internal.Config, profile internal.Profile, runID string, session *releaseSession) string {
+	pname := internal.FormatProfileName(profile)
+	if pname == "" {
+		pname = "default"
+	}
+	if session != nil && session.Manifest != nil {
+		for _, a := range session.Manifest.Artifacts {
+			if a.Type != internal.ArtifactTypeImage {
+				continue
+			}
+			ap := a.Profile
+			if ap == "" {
+				ap = "default"
+			}
+			if ap == pname && strings.TrimSpace(a.LocalRef) != "" {
+				return a.LocalRef
+			}
+		}
+	}
+	if runID != "" {
+		return cfg.ImageRef(cfg.BuildSourceTagForRun(runID, profile))
+	}
+	return cfg.ImageRef(cfg.BuildSourceTag(profile))
+}
+
+func primaryDigestToken(fingerprint string) string {
+	fingerprint = strings.TrimSpace(fingerprint)
+	if fingerprint == "" {
+		return ""
+	}
+	fields := strings.Fields(fingerprint)
+	if len(fields) == 0 {
+		return fingerprint
+	}
+	return fields[0]
+}
+
 // doSCPPush 按当前 profile 渲染 scp 发布目标并上传产物。
-func doSCPPush(cfg *internal.Config, profile internal.Profile, version string) error {
+func doSCPPush(cfg *internal.Config, profile internal.Profile, version string, session *releaseSession) error {
 	ctx := internal.NewRenderContext(cfg, profile, version)
 	name := internal.FormatProfileName(profile)
 	nameLabel := ""
@@ -150,8 +226,23 @@ func doSCPPush(cfg *internal.Config, profile internal.Profile, version string) e
 		remote)
 	internal.ProgressSub(local)
 
-	return internal.RunCmd(
+	if err := internal.RunCmd(
 		[]string{"scp", local, remote},
 		fmt.Sprintf("scp%s -> %s", nameLabel, remote),
-	)
+	); err != nil {
+		return err
+	}
+	if session != nil && session.Manifest != nil {
+		pname := name
+		if pname == "" {
+			pname = "default"
+		}
+		session.Manifest.UpsertArtifact(internal.ArtifactRecord{
+			Type:     internal.ArtifactTypeBinary,
+			Profile:  pname,
+			LocalRef: local,
+			Ref:      remote,
+		})
+	}
+	return nil
 }

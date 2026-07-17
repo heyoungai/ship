@@ -7,16 +7,26 @@ import (
 	"strings"
 )
 
-// LoadConfig 加载配置：默认值 → ship.toml → 环境变量覆盖 → 归一化 → 校验。
+// LoadConfig 从当前工作目录加载配置。
 func LoadConfig(imageName string) (*Config, error) {
+	return LoadConfigFrom(".", imageName)
+}
+
+// LoadConfigFrom 从指定目录加载 ship.toml（两阶段配置的 SourceRoot recipe 使用此入口）。
+func LoadConfigFrom(dir, imageName string) (*Config, error) {
 	cfg := &Config{ImageName: imageName}
 	cfg.applyDefaults()
 
-	if _, err := os.Stat("ship.toml"); os.IsNotExist(err) {
-		return nil, fmt.Errorf("未找到 ship.toml，请先运行 ship init 生成配置文件")
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		dir = "."
 	}
-	if err := decodeConfigFile("ship.toml", cfg); err != nil {
-		return nil, fmt.Errorf("读取 ship.toml 失败: %w", err)
+	tomlPath := filepath.Join(dir, "ship.toml")
+	if _, err := os.Stat(tomlPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("未找到 %s，请先运行 ship init 生成配置文件，或确认目标 tag 包含 ship.toml", tomlPath)
+	}
+	if err := decodeConfigFile(tomlPath, cfg); err != nil {
+		return nil, fmt.Errorf("读取 %s 失败: %w", tomlPath, err)
 	}
 
 	if v := os.Getenv("PLATFORMS"); v != "" {

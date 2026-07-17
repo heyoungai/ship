@@ -38,6 +38,8 @@ func init() {
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(currentCmd)
+	rootCmd.AddCommand(planCmd)
+	rootCmd.AddCommand(doctorCmd)
 	rootCmd.AddCommand(buildCmd)
 	rootCmd.AddCommand(tagCmd)
 	rootCmd.AddCommand(pushCmd)

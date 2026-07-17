@@ -25,14 +25,47 @@ var deployCmd = &cobra.Command{
 		}
 		defer session.Close()
 		ver := session.Version()
+
+		manifest, err := internal.RequireReleaseManifest(session.StateRoot(), ver)
+		if err != nil {
+			return err
+		}
+		session.Manifest = manifest
+		if !manifest.HasPublishedImage() && cfg.Build.Driver == "docker" && cfg.Publish.Driver == "registry" {
+			return fmt.Errorf("版本 %s 的 manifest 中没有已发布的 container-image；请先 ship run 或 ship push", ver)
+		}
+		if digest := manifest.PrimaryImageDigest(); digest != "" {
+			internal.PrintInfo(fmt.Sprintf("deploy from manifest: run_id=%s digest=%s", manifest.RunID, digest))
+			// 部署前校验远端 digest（若可获取）与 manifest 一致。
+			for _, a := range manifest.Artifacts {
+				if a.Type != internal.ArtifactTypeImage || a.Ref == "" || a.Digest == "" {
+					continue
+				}
+				remote, exists, err := internal.InspectRemoteDigest(a.Ref)
+				if err != nil {
+					internal.PrintWarning(fmt.Sprintf("无法校验远端 digest (%s): %v", a.Ref, err))
+					continue
+				}
+				if exists {
+					got := primaryDigestToken(remote)
+					if got != "" && got != a.Digest && !strings.HasPrefix(remote, a.Digest) {
+						return fmt.Errorf("远端 %s digest 与 manifest 不一致：remote=%s manifest=%s", a.Ref, got, a.Digest)
+					}
+				}
+			}
+		} else {
+			internal.PrintInfo(fmt.Sprintf("deploy from manifest: run_id=%s (no digest recorded)", manifest.RunID))
+		}
+
 		profile := cfg.DefaultProfile()
+		meta := historyMetaFromSession(session)
 		if err := executeDeployStage(cfg, ver, profile, session); err != nil {
-			return recordDeploymentResult(err, ver, "deploy", "fail", err.Error())
+			return recordDeploymentResult(err, ver, "deploy", "fail", err.Error(), meta)
 		}
 		if err := internal.ExecuteVerify(cfg, profile, ver); err != nil {
-			return recordDeploymentResult(err, ver, "deploy", "fail", err.Error())
+			return recordDeploymentResult(err, ver, "deploy", "fail", err.Error(), meta)
 		}
-		return recordDeploymentResult(nil, ver, "deploy", "success", "")
+		return recordDeploymentResult(nil, ver, "deploy", "success", "", meta)
 	},
 }
 

@@ -76,6 +76,8 @@ ship --help
 | `init` | 在当前目录初始化 ship.toml 配置文件 |
 | `version` | 显示 ship 工具版本号 |
 | `current` | 显示当前项目的 git tag 版本号 |
+| `plan` | 展示 release 执行计划（不执行） |
+| `doctor` | 检查 release 运行条件 |
 | `build` | 执行 prepare / templates / build |
 | `tag` | 给镜像打 tag |
 | `push` | 推送镜像到所有配置的仓库 |
@@ -120,11 +122,25 @@ ship --help
 
 完整设计见 [docs/git-tag-release-strategy.md](docs/git-tag-release-strategy.md)。
 
+### Plan + Artifact（阶段二）
+
+- `ship plan -v vX`：预览本次 release 的 identity、stages、预期产物（`--json` 可给 CI）。
+- `ship doctor -v vX`：检查 tag/commit、SourceRoot 的 `ship.toml`、外部 env、docker 等运行条件。
+- `ship run` / `ship build` 会写入 `.ship/runs/<run_id>/manifest.json`；成功 publish 后更新 `.ship/releases/<version>.json`。
+- 独立 `ship push` / `ship deploy` / `ship rollback` **按 manifest 消费**：没有对应 release 档案会失败，并提示先 `ship run` 或 `build+push`。
+- 部署仍写远端 `tag_key=version`（按 digest 部署留待后续）；部署前若 manifest 有 digest 会尽量校验远端一致。
+- 部署历史会记录 `commit` / `digest` / `run_id`（兼容旧 history.json）。
+
 ```bash
 # 矩阵构建：指定 profile
 ./ship.exe build -p brand-a
 ./ship.exe tag -v v2.0.0 -p brand-a
 ./ship.exe push -v v2.0.0 -p brand-a
+
+# 预览计划与健康检查
+./ship.exe plan -v v2.0.0
+./ship.exe plan -v v2.0.0 --json
+./ship.exe doctor -v v2.0.0
 
 # 回滚部署
 ./ship.exe rollback              # 回滚到上一个成功版本
@@ -320,10 +336,12 @@ env = { NEXT_PUBLIC_APP_BRAND = "brand-b" }
 - `local_build` 会按平台选择 shell：Windows 使用 PowerShell，Linux/macOS 使用 `sh`
 - `steps.*`、`templates`、`verify.*` 已接入命令执行链路
 - `version.source`、`version.fallback`、`version.override_env` 已参与实际版本解析；`git-tag` 模式还会锁定 `refs/tags/<version>` 对应 commit，并在 worktree 中构建
+- `ship plan` / `ship doctor` 与 release manifest（`.ship/runs` / `.ship/releases`）已接入；独立 push/deploy 按 manifest 消费
 - `deploy` / `rollback` 不修改 registry `latest`；正式版本 push 默认拒绝同 tag 不同 digest 覆盖
-- 历史记录写入与配置校验不再静默失败，错误会直接向上返回
+- 历史记录写入与配置校验不再静默失败，错误会直接向上返回；history 可含 commit/digest/run_id
 - 阶段输出、历史表格和提示已切到 PTerm，避免继续维护手写进度输出
 - 配置解析层已收敛为 **v2-only**，不再接受旧版 `registries / deploy.enabled / build.platforms` 写法
+- 两阶段配置：git-tag 构建会从 SourceRoot 重载 `ship.toml` 作为 release recipe
 
 ## 开发
 

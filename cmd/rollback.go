@@ -29,7 +29,6 @@ func doRollback(cfg *internal.Config) error {
 		return fmt.Errorf("rollback 当前仅支持 deploy.driver = compose，当前为 %s", cfg.Deploy.Driver)
 	}
 
-	// 1. 确定目标版本
 	var targetVersion string
 	if rollbackVersion != "" {
 		targetVersion = rollbackVersion
@@ -59,22 +58,28 @@ func doRollback(cfg *internal.Config) error {
 		return nil
 	}
 
-	// 2. 执行部署（不修改 registry latest；按已有版本字符串部署）
 	session, err := prepareReleaseSession(cfg, targetVersion, false)
 	if err != nil {
 		return err
 	}
 	defer session.Close()
+
+	manifest, err := internal.RequireReleaseManifest(session.StateRoot(), session.Version())
+	if err != nil {
+		return fmt.Errorf("回滚需要已发布的 release manifest: %w", err)
+	}
+	session.Manifest = manifest
+	meta := historyMetaFromSession(session)
+
 	profile := cfg.DefaultProfile()
 	if err := executeDeployStage(cfg, session.Version(), profile, session); err != nil {
-		return recordDeploymentResult(err, session.Version(), "rollback", "fail", err.Error())
+		return recordDeploymentResult(err, session.Version(), "rollback", "fail", err.Error(), meta)
 	}
 	if err := internal.ExecuteVerify(cfg, profile, session.Version()); err != nil {
-		return recordDeploymentResult(err, session.Version(), "rollback", "fail", err.Error())
+		return recordDeploymentResult(err, session.Version(), "rollback", "fail", err.Error(), meta)
 	}
 
-	// 3. 记录历史
-	if err := recordDeploymentResult(nil, session.Version(), "rollback", "success", ""); err != nil {
+	if err := recordDeploymentResult(nil, session.Version(), "rollback", "success", "", meta); err != nil {
 		return err
 	}
 	internal.PrintSuccess("回滚完成")

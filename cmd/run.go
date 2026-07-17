@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/heyoungai/ship/internal"
 
@@ -30,76 +29,53 @@ var runCmd = &cobra.Command{
 			}
 		}()
 
+		activeCfg := session.Config
+		if activeCfg == nil {
+			activeCfg = cfg
+		}
+
 		ver := session.Version()
-		envFile, err := resolveExternalEnvFile(session, cfg, runEnvFile)
+		envFile, err := resolveExternalEnvFile(session, activeCfg, runEnvFile)
 		if err != nil {
 			return err
 		}
 
-		profiles, err := cfg.GetProfiles(runProfile)
+		plan, err := internal.CompileReleasePlan(activeCfg, session.Identity, session.Roots, internal.PlanOptions{
+			ProfileFilter: runProfile,
+			SkipDeploy:    runSkipDeploy,
+			EnvFile:       envFile,
+		})
 		if err != nil {
 			return err
 		}
-		profileNames := make([]string, len(profiles))
-		for i, p := range profiles {
-			profileNames[i] = internal.FormatProfileName(p)
-			if profileNames[i] == "" {
-				profileNames[i] = "default"
-			}
+		internal.PrintReleasePlan(plan)
+
+		profiles, err := activeCfg.GetProfiles(runProfile)
+		if err != nil {
+			return err
 		}
 
-		buildStep := buildStepTitle()
-		publishStep := publishStepTitle()
-		deployStep := deployStepTitle()
-		verifyStep := verifyStepTitle()
-		shouldTag := cfg.UsesTagStage()
-		shouldPublish := cfg.UsesPublishStage()
-		shouldDeploy := !runSkipDeploy && cfg.UsesDeployStage()
-		shouldVerify := !runSkipDeploy && cfg.UsesVerifyStage()
+		shouldTag := activeCfg.UsesTagStage()
+		shouldPublish := activeCfg.UsesPublishStage()
+		shouldDeploy := !runSkipDeploy && activeCfg.UsesDeployStage()
+		shouldVerify := !runSkipDeploy && activeCfg.UsesVerifyStage()
 
-		steps := []string{buildStep}
-		if shouldTag {
-			steps = append(steps, "打 Tag")
-		}
-		if shouldPublish {
-			steps = append(steps, publishStep)
-		}
-		if shouldDeploy {
-			steps = append(steps, deployStep)
-		}
-		if shouldVerify {
-			steps = append(steps, verifyStep)
-		}
-		totalSteps := len(steps)
-
-		internal.PrintBanner(fmt.Sprintf(
-			"ship run  version=%s  profiles=%s  run_id=%s",
-			ver, strings.Join(profileNames, ", "), session.RunID(),
-		))
-		internal.SetProgressTotal(totalSteps)
-		internal.PrintRunSummary(
-			ver,
-			strings.Join(profileNames, ", "),
-			envFile,
-			totalSteps,
-			shouldDeploy,
-		)
-		internal.PrintInfo(fmt.Sprintf("plan=%s", strings.Join(steps, " → ")))
-		internal.PrintInfo(fmt.Sprintf("source_root=%s", session.Roots.SourceRoot))
-
+		internal.SetProgressTotal(len(plan.Stages))
 		currentStep := 1
-		internal.ProgressStep(currentStep, buildStep)
+
+		internal.ProgressStep(currentStep, buildStepTitleFor(activeCfg))
 		for _, p := range profiles {
-			if err := executeBuildProfile(cfg, ver, p, envFile, session.RunID()); err != nil {
+			if err := executeBuildProfile(activeCfg, ver, p, envFile, session.RunID(), session); err != nil {
 				return err
 			}
 		}
+		_ = session.saveManifest(false)
 		currentStep++
 
 		if shouldTag {
 			internal.ProgressStep(currentStep, "打 Tag")
 			for _, p := range profiles {
-				if err := doTag(cfg, ver, p, session.RunID()); err != nil {
+				if err := doTag(activeCfg, ver, p, session.RunID()); err != nil {
 					return err
 				}
 			}
@@ -107,20 +83,27 @@ var runCmd = &cobra.Command{
 		}
 
 		if shouldPublish {
-			internal.ProgressStep(currentStep, publishStep)
+			internal.ProgressStep(currentStep, publishStepTitleFor(activeCfg))
 			for _, p := range profiles {
-				if err := executePublishProfile(cfg, ver, p, session.RunID()); err != nil {
+				if err := executePublishProfile(activeCfg, ver, p, session.RunID(), session); err != nil {
 					return err
 				}
 			}
+			if err := session.saveManifest(true); err != nil {
+				return fmt.Errorf("保存 release manifest 失败: %w", err)
+			}
+			internal.PrintInfo(fmt.Sprintf("release indexed: %s", internal.ReleaseIndexPath(session.StateRoot(), ver)))
 			currentStep++
+		} else {
+			_ = session.saveManifest(false)
 		}
 
-		deployProfile := selectDeployProfile(cfg, profiles)
+		deployProfile := selectDeployProfile(activeCfg, profiles)
+		meta := historyMetaFromSession(session)
 		if shouldDeploy {
-			internal.ProgressStep(currentStep, deployStep)
-			if err := executeDeployStage(cfg, ver, deployProfile, session); err != nil {
-				return recordDeploymentResult(err, ver, "deploy", "fail", err.Error())
+			internal.ProgressStep(currentStep, deployStepTitleFor(activeCfg))
+			if err := executeDeployStage(activeCfg, ver, deployProfile, session); err != nil {
+				return recordDeploymentResult(err, ver, "deploy", "fail", err.Error(), meta)
 			}
 			currentStep++
 		} else if runSkipDeploy {
@@ -128,14 +111,14 @@ var runCmd = &cobra.Command{
 		}
 
 		if shouldVerify {
-			internal.ProgressStep(currentStep, verifyStep)
-			if err := internal.ExecuteVerify(cfg, deployProfile, ver); err != nil {
-				return recordDeploymentResult(err, ver, "deploy", "fail", err.Error())
+			internal.ProgressStep(currentStep, verifyStepTitleFor(activeCfg))
+			if err := internal.ExecuteVerify(activeCfg, deployProfile, ver); err != nil {
+				return recordDeploymentResult(err, ver, "deploy", "fail", err.Error(), meta)
 			}
 		}
 
 		if shouldDeploy {
-			if err := recordDeploymentResult(nil, ver, "deploy", "success", ""); err != nil {
+			if err := recordDeploymentResult(nil, ver, "deploy", "success", "", meta); err != nil {
 				return err
 			}
 		}
@@ -143,18 +126,6 @@ var runCmd = &cobra.Command{
 		internal.PrintSuccess("所有任务已完成")
 		return nil
 	},
-}
-
-// verifyStepTitle 返回 verify 阶段的展示标题。
-func verifyStepTitle() string {
-	switch cfg.Verify.Driver {
-	case "ssh":
-		return "SSH 校验"
-	case "command":
-		return "本地校验"
-	default:
-		return "健康检查"
-	}
 }
 
 func init() {
@@ -165,7 +136,14 @@ func init() {
 }
 
 func buildStepTitle() string {
-	switch cfg.Build.Driver {
+	return buildStepTitleFor(cfg)
+}
+
+func buildStepTitleFor(c *internal.Config) string {
+	if c == nil {
+		return "构建"
+	}
+	switch c.Build.Driver {
 	case "go-binary":
 		return "构建二进制"
 	case "command":
@@ -175,8 +153,11 @@ func buildStepTitle() string {
 	}
 }
 
-func publishStepTitle() string {
-	switch cfg.Publish.Driver {
+func publishStepTitleFor(c *internal.Config) string {
+	if c == nil {
+		return "发布"
+	}
+	switch c.Publish.Driver {
 	case "scp":
 		return "上传产物"
 	default:
@@ -184,8 +165,11 @@ func publishStepTitle() string {
 	}
 }
 
-func deployStepTitle() string {
-	switch cfg.Deploy.Driver {
+func deployStepTitleFor(c *internal.Config) string {
+	if c == nil {
+		return "远程部署"
+	}
+	switch c.Deploy.Driver {
 	case "binary-install":
 		return "安装二进制"
 	case "ssh":
@@ -193,4 +177,31 @@ func deployStepTitle() string {
 	default:
 		return "远程部署"
 	}
+}
+
+func verifyStepTitleFor(c *internal.Config) string {
+	if c == nil {
+		return "健康检查"
+	}
+	switch c.Verify.Driver {
+	case "ssh":
+		return "SSH 校验"
+	case "command":
+		return "本地校验"
+	default:
+		return "健康检查"
+	}
+}
+
+func historyMetaFromSession(session *releaseSession) internal.HistoryMeta {
+	meta := internal.HistoryMeta{}
+	if session == nil {
+		return meta
+	}
+	meta.Commit = session.Identity.SourceCommit
+	meta.RunID = session.RunID()
+	if session.Manifest != nil {
+		meta.Digest = session.Manifest.PrimaryImageDigest()
+	}
+	return meta
 }
