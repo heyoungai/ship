@@ -39,8 +39,16 @@ func TestImageTag_DefaultProfile(t *testing.T) {
 	}
 }
 
+func TestImageTag_NamedDefaultProfileNoSuffix(t *testing.T) {
+	p := Profile{Name: "app", Default: true}
+	got := ImageTag("v2.0.0", p)
+	if got != "v2.0.0" {
+		t.Errorf("ImageTag(named default) = %q, want %q", got, "v2.0.0")
+	}
+}
+
 func TestImageTag_NamedProfile(t *testing.T) {
-	p := Profile{Name: "brand-a", Default: true}
+	p := Profile{Name: "brand-a"}
 	got := ImageTag("v2.0.0", p)
 	if got != "v2.0.0-brand-a" {
 		t.Errorf("ImageTag(brand-a) = %q, want %q", got, "v2.0.0-brand-a")
