@@ -2,13 +2,15 @@ version: "3"
 
 vars:
   BINARY: ship.exe
-  VERSION: dev
+  MODULE: github.com/heyoungai/ship
+  VERSION:
+    sh: git describe --tags --always --dirty || echo dev
 
 tasks:
   build:
-    desc: 编译 ship 二进制
+    desc: 编译 ship 二进制（默认注入当前 git tag；可用 VERSION=vX.Y.Z 覆盖）
     cmds:
-      - go build -ldflags "-X ship/cmd.Version={{.VERSION}}" -o {{.BINARY}} .
+      - go build -ldflags "-s -w -X {{.MODULE}}/cmd.Version={{.VERSION}}" -o {{.BINARY}} .
 
   test:
     desc: 运行所有测试

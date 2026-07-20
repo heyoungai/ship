@@ -26,11 +26,12 @@ jobs:
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ github.ref_name }}
         run: |
           ext=""
           if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
           output="ship-${GOOS}-${GOARCH}${ext}"
-          go build -ldflags="-s -w" -o "dist/${output}" .
+          go build -ldflags="-s -w -X github.com/heyoungai/ship/cmd.Version=${VERSION}" -o "dist/${output}" .
           echo "BINARY=${output}" >> $GITHUB_ENV
 
       - name: Upload artifact
