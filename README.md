@@ -106,7 +106,7 @@ image: registry.example.com/ns/app@${APP_IMAGE_DIGEST}
 
 完整设计与边界见 [docs/git-tag-release-strategy.md](docs/git-tag-release-strategy.md)。
 
-Agent skill：`ship skill` 安装到 `.claude/skills/ship/SKILL.md`。文档带整数 `version`；`build` / `run` / `doctor` 若检测到已安装 skill 过旧会警告，执行 `ship skill -f` 更新。
+Agent skill：`ship skill` 安装到 `.claude/skills/ship/SKILL.md`，frontmatter `version` 对齐当前 `ship version`；`build` / `run` / `doctor` 若不一致会警告，执行 `ship skill -f` 更新。
 
 ## 配置
 

@@ -48,10 +48,14 @@ func installSkill() error {
 		}
 	}
 
-	// 读取嵌入的 SKILL.md
+	// 读取嵌入的 SKILL.md，并写入当前 ship 版本
 	data, err := skillFS.ReadFile("skills/SKILL.md")
 	if err != nil {
 		return fmt.Errorf("读取嵌入的 SKILL.md 失败: %w", err)
+	}
+	data, err = stampSkillVersion(data, ExpectedSkillVersion())
+	if err != nil {
+		return fmt.Errorf("写入 skill version 失败: %w", err)
 	}
 
 	// 创建目标目录
@@ -65,9 +69,7 @@ func installSkill() error {
 	}
 
 	internal.PrintSuccess(fmt.Sprintf("已安装 ship agent skill → %s", targetPath))
-	if v, err := EmbeddedSkillVersion(); err == nil {
-		internal.PrintInfo(fmt.Sprintf("skill version = %d", v))
-	}
+	internal.PrintInfo(fmt.Sprintf("skill version = %s（对齐 ship %s）", ExpectedSkillVersion(), Version))
 	internal.PrintInfo("Claude Code 等 agent 现在可以使用 ship 工具进行构建和部署了")
 	return nil
 }

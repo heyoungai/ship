@@ -3,7 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
-	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -13,29 +13,38 @@ func TestParseSkillDocVersion(t *testing.T) {
 	cases := []struct {
 		name    string
 		content string
-		want    int
+		want    string
 		found   bool
 	}{
 		{
-			name: "with version",
+			name: "ship semver",
 			content: `---
 name: ship
-version: 3
+version: v2.6.1
 description: test
 ---
 
 # Body
 `,
-			want:  3,
+			want:  "v2.6.1",
 			found: true,
 		},
 		{
 			name: "quoted version",
 			content: `---
-version: "2"
+version: "v2.6.0"
 ---
 `,
-			want:  2,
+			want:  "v2.6.0",
+			found: true,
+		},
+		{
+			name: "dev version",
+			content: `---
+version: dev
+---
+`,
+			want:  "dev",
 			found: true,
 		},
 		{
@@ -52,9 +61,9 @@ name: ship
 			found:   false,
 		},
 		{
-			name: "invalid version",
+			name: "empty version",
 			content: `---
-version: abc
+version: 
 ---
 `,
 			found: false,
@@ -70,19 +79,54 @@ version: abc
 				t.Fatalf("found = %v, want %v", found, tc.found)
 			}
 			if found && got != tc.want {
-				t.Fatalf("version = %d, want %d", got, tc.want)
+				t.Fatalf("version = %q, want %q", got, tc.want)
 			}
 		})
 	}
 }
 
-func TestEmbeddedSkillVersion(t *testing.T) {
-	v, err := EmbeddedSkillVersion()
+func TestStampSkillVersion(t *testing.T) {
+	t.Parallel()
+
+	in := []byte(`---
+name: ship
+version: 1
+description: x
+---
+
+# Body
+`)
+	out, err := stampSkillVersion(in, "v2.6.1")
 	if err != nil {
-		t.Fatalf("EmbeddedSkillVersion: %v", err)
+		t.Fatal(err)
 	}
-	if v < 1 {
-		t.Fatalf("embedded skill version = %d, want >= 1", v)
+	got, found := ParseSkillDocVersion(out)
+	if !found || got != "v2.6.1" {
+		t.Fatalf("stamped version = %q found=%v, want v2.6.1", got, found)
+	}
+	if !strings.Contains(string(out), "name: ship") {
+		t.Fatal("lost name field")
+	}
+
+	noVer := []byte(`---
+name: ship
+---
+
+# Body
+`)
+	out2, err := stampSkillVersion(noVer, "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got2, found2 := ParseSkillDocVersion(out2)
+	if !found2 || got2 != "dev" {
+		t.Fatalf("inserted version = %q found=%v, want dev", got2, found2)
+	}
+}
+
+func TestExpectedSkillVersion(t *testing.T) {
+	if ExpectedSkillVersion() != normalizeSkillVersion(Version) {
+		t.Fatalf("ExpectedSkillVersion = %q, want %q", ExpectedSkillVersion(), Version)
 	}
 }
 
@@ -90,11 +134,6 @@ func TestWarnIfInstalledSkillOutdated(t *testing.T) {
 	root := t.TempDir()
 	skillDir := filepath.Join(root, ".claude", "skills", "ship")
 	if err := os.MkdirAll(skillDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	expected, err := EmbeddedSkillVersion()
-	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -106,8 +145,15 @@ func TestWarnIfInstalledSkillOutdated(t *testing.T) {
 	warnIfInstalledSkillOutdated(root)
 
 	// current version → no panic
-	current := []byte(fmtFrontmatter(expected))
+	current := []byte("---\nname: ship\nversion: " + ExpectedSkillVersion() + "\n---\n# ok\n")
 	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), current, 0644); err != nil {
+		t.Fatal(err)
+	}
+	warnIfInstalledSkillOutdated(root)
+
+	// mismatched → no panic
+	mismatch := []byte("---\nname: ship\nversion: v0.0.0\n---\n# old\n")
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), mismatch, 0644); err != nil {
 		t.Fatal(err)
 	}
 	warnIfInstalledSkillOutdated(root)
@@ -116,6 +162,12 @@ func TestWarnIfInstalledSkillOutdated(t *testing.T) {
 	warnIfInstalledSkillOutdated(t.TempDir())
 }
 
-func fmtFrontmatter(version int) string {
-	return "---\nname: ship\nversion: " + strconv.Itoa(version) + "\n---\n# ok\n"
+func TestSkillVersionOutdated(t *testing.T) {
+	t.Parallel()
+	if !skillVersionOutdated("v2.6.0", "v2.6.1") {
+		t.Fatal("expected outdated")
+	}
+	if skillVersionOutdated("v2.6.1", "v2.6.1") {
+		t.Fatal("same version should not be outdated")
+	}
 }

@@ -1,14 +1,14 @@
 ---
 name: ship
 description: Use the ship CLI tool for Docker image and Go binary build, push, and deploy workflows.
-version: 1
+version: dev
 ---
 
 # Ship — Docker 镜像 & Go 二进制构建部署工具
 
 Ship 是一个 CLI 工具，支持 **build → tag → push → deploy → verify** 全流程，也可分步执行。配置文件为项目根目录的 `ship.toml`（schema = 2）。
 
-> **Skill 版本**：frontmatter 中的 `version` 为 skill 文档兼容版本（整数）。内容变更时递增；`ship build` / `ship run` 若检测到项目内已安装的 skill 过旧，会警告并提示执行 `ship skill -f`。
+> **Skill 版本**：`ship skill` 安装时会把 frontmatter `version` 写成当前 ship 二进制版本（如 `v2.6.1`）。`ship build` / `run` / `doctor` 若发现已安装 skill 与当前 `ship version` 不一致，会警告并提示 `ship skill -f`。
 
 ---
 
@@ -429,4 +429,4 @@ ship skill -f     # 强制覆盖（skill 过期警告时使用）
 - rollback 仅支持 compose 部署驱动
 - 独立 `deploy`/`push` 需要该版本已成功发布过（有 release manifest）
 - 版本号格式建议使用 semver（如 `v1.2.3`），与 git tag 保持一致
-- Skill frontmatter `version` 与 ship 二进制版本无关；文档变更时手动递增
+- Skill frontmatter `version` 对齐 ship 工具版本；升级 ship 后若告警，执行 `ship skill -f` 即可
