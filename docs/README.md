@@ -18,7 +18,7 @@
 
 | 文档 | 状态 | 定位 |
 |------|------|------|
-| [ship AI advisor](./changes/active/ship-ai-advisor.md) | planned | AI 作为发布顾问的规划（未实现） |
+| [ship AI advisor](./changes/active/ship-ai-advisor.md) | in progress | AI 发布顾问 v0（`ship ai` 可试用） |
 
 ## ADR
 
