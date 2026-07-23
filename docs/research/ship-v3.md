@@ -1,6 +1,6 @@
 # ship v3：Artifact-centric Release Engine
 
-> Git tag、源码快照、产物不可变性与 worktree 执行边界的权威设计，见 [Git Tag 真实版本构建策略](git-tag-release-strategy.md)。该策略是 Release Plan 和 Artifact Manifest 成立的前提。
+> Git tag、源码快照、产物不可变性与 worktree 执行边界的权威设计，见 [Git Tag 真实版本构建策略](../engineering/git-tag-release-strategy.md)。该策略是 Release Plan 和 Artifact Manifest 成立的前提。
 
 更稳妥的定义是：
 
@@ -431,7 +431,7 @@ ship deploy --release <release-id>
 
 ## 六、明确不进入 v3 的方向
 
-为了保护 [design-principles.md](C:/code/ship/docs/design-principles.md:7) 里的产品定位，建议继续明确不做：
+为了保护 [产品设计与边界](../product-design.md) 里的产品定位，建议继续明确不做：
 
 - 通用 DAG 配置
 - Earthfile/Makefile 式 DSL

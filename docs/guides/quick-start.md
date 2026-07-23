@@ -4,8 +4,8 @@
 
 如果你要在团队里长期推广 ship，建议再一起阅读：
 
-- [design-principles.md](design-principles.md)
-- [docker-default-pattern.md](docker-default-pattern.md)
+- [产品设计与边界](../product-design.md)
+- [Docker 默认模式](docker-default-pattern.md)
 
 ## 1. ship 是什么
 
@@ -309,4 +309,4 @@ CI 里一般只需要这几条原则：
 
 这样定位问题最快。
 
-对大多数 Docker 项目，推荐直接采用 [docker-default-pattern.md](docker-default-pattern.md) 里的默认范式，不要先从 hooks 和 templates 开始。
+对大多数 Docker 项目，推荐直接采用 [Docker 默认模式](docker-default-pattern.md) 里的默认范式，不要先从 hooks 和 templates 开始。

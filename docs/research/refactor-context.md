@@ -145,7 +145,7 @@ go 1.25.8
 
 本次已经单独写入：
 
-- `docs/ship-toml-v2-draft.md`
+- `docs/research/ship-toml-v2-draft.md`
 - `config.example.toml`
 
 v2 的核心方向不是“再加几个 flag”，而是：
@@ -303,7 +303,7 @@ schema = 2
 
 - `README.md`
 - `config.example.toml`
-- `docs/ship-toml-v2-draft.md`
+- `docs/research/ship-toml-v2-draft.md`
 - `internal/config.go`
 - `internal/history.go`
 - `internal/ui.go`
