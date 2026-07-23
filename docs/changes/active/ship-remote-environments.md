@@ -150,7 +150,7 @@ ship remote <subcommand> [-e ENV]
 | `ship remote *` | 远程：确定性探测与执行，绑定环境名册 |
 | skill | 教 agent 何时用哪条命令 |
 
-advisor **不**持 SSH 连接；若日后有 `ship ai diagnose`，应消费 `remote context/status/logs` 的结构化输出，仍做顾问而非 loop agent。
+advisor **不**持 SSH 连接；若日后有 `ship ai diagnose`，应消费 `remote context/status/logs` 的结构化输出。顾问可以是极简 loop（见 [ship-ai-advisor.md](./ship-ai-advisor.md)），但远程探测/执行仍走 `ship remote *`，不在 advisor 里持连接或自由 SSH。
 
 ## 安全边界
 
