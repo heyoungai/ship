@@ -65,6 +65,9 @@ func installSkill() error {
 	}
 
 	internal.PrintSuccess(fmt.Sprintf("已安装 ship agent skill → %s", targetPath))
+	if v, err := EmbeddedSkillVersion(); err == nil {
+		internal.PrintInfo(fmt.Sprintf("skill version = %d", v))
+	}
 	internal.PrintInfo("Claude Code 等 agent 现在可以使用 ship 工具进行构建和部署了")
 	return nil
 }

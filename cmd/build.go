@@ -30,6 +30,7 @@ var buildCmd = &cobra.Command{
 				internal.PrintWarning(fmt.Sprintf("release session cleanup: %v", closeErr))
 			}
 		}()
+		warnIfInstalledSkillOutdated(session.InvocationRoot())
 
 		version := session.Version()
 		activeCfg := session.Config

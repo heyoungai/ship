@@ -29,6 +29,7 @@ var runCmd = &cobra.Command{
 				internal.PrintWarning(fmt.Sprintf("release session cleanup: %v", closeErr))
 			}
 		}()
+		warnIfInstalledSkillOutdated(session.InvocationRoot())
 
 		activeCfg := session.Config
 		if activeCfg == nil {

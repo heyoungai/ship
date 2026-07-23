@@ -112,6 +112,7 @@ var doctorCmd = &cobra.Command{
 
 		internal.PrintBanner("ship doctor")
 		internal.PrintReleasePlan(plan)
+		warnIfInstalledSkillOutdated(session.InvocationRoot())
 
 		var failures []string
 

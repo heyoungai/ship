@@ -35,11 +35,15 @@ go build -o .\ship.exe .
 最常用的命令只有这几个：
 
 ```powershell
-.\ship.exe build
+.\ship.exe plan -v v1.0.0
+.\ship.exe doctor -v v1.0.0
+.\ship.exe build -v v1.0.0
 .\ship.exe push -v v1.0.0
 .\ship.exe deploy -v v1.0.0
 .\ship.exe run -v v1.0.0
 ```
+
+默认 `version.source = "git-tag"` 时，`-v` 必须是本地真实 Git tag；构建来自该 tag 的源码快照。`deploy` / 独立 `push` 消费 `.ship/releases/` 中的 release manifest，不会从当前目录偷偷补构建。
 
 如果在 CI 里跑，建议加上：
 
@@ -95,6 +99,8 @@ local_env_file = "./deploy/.env.prod"
 env_file = ".env"
 auto_env_file = true
 tag_key = "APP_IMAGE_TAG"
+pin = "digest"
+digest_key = "APP_IMAGE_DIGEST"
 up = "docker compose --env-file ./.env up -d --remove-orphans"
 
 [verify]

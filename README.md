@@ -62,6 +62,7 @@ ship --help
 | `build` / `tag` / `push` | 构建、打 tag、发布 |
 | `deploy` / `rollback` / `history` | 部署、回滚、历史 |
 | `run` | `build → tag → push → deploy` 全流程 |
+| `skill` | 安装/更新 agent skill（`.claude/skills/ship/`） |
 
 ## 用法
 
@@ -104,6 +105,8 @@ image: registry.example.com/ns/app@${APP_IMAGE_DIGEST}
 - `deploy` / `rollback` 不修改 registry `:latest`；需要移动 `latest` 时用 `--promote-latest`（生产建议关闭 `tag_latest_on_default_profile`）。
 
 完整设计与边界见 [docs/git-tag-release-strategy.md](docs/git-tag-release-strategy.md)。
+
+Agent skill：`ship skill` 安装到 `.claude/skills/ship/SKILL.md`。文档带整数 `version`；`build` / `run` / `doctor` 若检测到已安装 skill 过旧会警告，执行 `ship skill -f` 更新。
 
 ## 配置
 

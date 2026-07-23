@@ -1,11 +1,14 @@
 ---
 name: ship
 description: Use the ship CLI tool for Docker image and Go binary build, push, and deploy workflows.
+version: 1
 ---
 
 # Ship — Docker 镜像 & Go 二进制构建部署工具
 
 Ship 是一个 CLI 工具，支持 **build → tag → push → deploy → verify** 全流程，也可分步执行。配置文件为项目根目录的 `ship.toml`（schema = 2）。
+
+> **Skill 版本**：frontmatter 中的 `version` 为 skill 文档兼容版本（整数）。内容变更时递增；`ship build` / `ship run` 若检测到项目内已安装的 skill 过旧，会警告并提示执行 `ship skill -f`。
 
 ---
 
@@ -13,9 +16,12 @@ Ship 是一个 CLI 工具，支持 **build → tag → push → deploy → verif
 
 ```bash
 ship init          # 在当前目录生成 ship.toml（自动探测项目信息）
-ship run           # 一键执行完整流水线：build → tag → push → deploy → verify
-ship run -y        # 非交互模式（CI / agent 调用时必须加 -y）
+ship plan -v v1.0.0   # 预览 release 计划（不执行）
+ship doctor -v v1.0.0 # 检查 release 运行条件
+ship run -v v1.0.0 -y # 一键执行：build → tag → push → deploy → verify
 ```
+
+默认 `version.source = "git-tag"` 时，`-v` / `SHIP_VERSION` 必须是**本地真实 Git tag**。构建来自该 tag 的源码快照（worktree），不切换当前分支，也不带上未提交修改。
 
 ---
 
@@ -24,19 +30,37 @@ ship run -y        # 非交互模式（CI / agent 调用时必须加 -y）
 | 命令 | 用途 | 关键 Flags |
 |------|------|-----------|
 | `ship init` | 生成 ship.toml | `-f` 强制覆盖 |
-| `ship build` | 构建镜像/二进制 | `-v` 版本, `-p` profile, `--env-file` |
+| `ship plan` | 展示 release 计划（不执行） | `-v`, `-p`, `--env-file`, `--json`, `--skip-deploy` |
+| `ship doctor` | 检查 release 运行条件 | `-v`, `-p`, `--env-file` |
+| `ship build` | 构建镜像/二进制 | `-v`, `-p`, `--env-file` |
 | `ship tag` | 为镜像打远程标签 | `-v`, `-p` |
-| `ship push` | 推送镜像/上传文件 | `-v`, `-p` |
-| `ship deploy` | 部署到远程服务器 | `-v` |
-| `ship run` | 全流水线 | `-v`, `-p`, `--env-file`, `--skip-deploy` |
+| `ship push` | 推送镜像/上传文件 | `-v`, `-p`, `--promote-latest` |
+| `ship deploy` | 按已发布 manifest 部署 | `-v` |
+| `ship run` | 全流水线 | `-v`, `-p`, `--env-file`, `--skip-deploy`, `--promote-latest` |
 | `ship rollback` | 回滚到指定版本 | `-v` 目标版本, `-y` |
 | `ship history` | 查看部署历史 | `-n` 条数（默认 20） |
 | `ship current` | 显示当前 git tag 版本 | — |
 | `ship version` | 显示 ship 工具版本 | — |
+| `ship skill` | 安装/更新本 skill 到项目 | `-f` 强制覆盖 |
 
-> **未识别配置项**：`ship.toml` 中未在 schema 定义的字段默认会报错（如误写 `extra_files`）。可用 `[config] unknown_keys = "warn"` 或 `SHIP_UNKNOWN_KEYS=warn` 降级。
+> **未识别配置项**：`ship.toml` 中未在 schema 定义的字段默认会报错。可用 `[config] unknown_keys = "warn"` 或 `SHIP_UNKNOWN_KEYS=warn` 降级。
 
 > **重要**：agent 调用任何需要确认的命令时，必须加 `-y` 跳过交互提示。
+
+---
+
+## 发布语义（git-tag 默认）
+
+- `ship plan` / `ship doctor` 可先预览计划与检查条件。
+- `ship run` / `ship build` 写入 `.ship/runs/`；成功发布后索引到 `.ship/releases/`。
+- 独立 `push` / `deploy` / `rollback` **按 release manifest 消费产物**；尚未发布过的版本会失败（不会偷偷从当前目录补构建）。
+- 默认按 **digest 钉部署**（写入 `APP_IMAGE_DIGEST`，同时保留版本别名）。生产 compose 推荐：
+
+```yaml
+image: registry.example.com/ns/app@${APP_IMAGE_DIGEST}
+```
+
+- `deploy` / `rollback` 不修改 registry `:latest`；需要移动 `latest` 时用 `--promote-latest`（生产建议关闭 `tag_latest_on_default_profile`）。
 
 ---
 
@@ -128,7 +152,7 @@ driver = "docker"
 image = "myapp"
 context = "."
 dockerfile = "./Dockerfile"
-platforms = ["linux/amd64"]
+platforms = ["linux/amd64"]   # 当前须单平台（依赖 --load）
 env_file = "./.env.local"       # 构建时环境变量文件
 build_args_from_env = true      # 将 env_file 中的变量作为 --build-arg
 local_build = "bun run build"   # 可选：Docker 构建前先本地构建
@@ -177,6 +201,8 @@ driver = "registry"
 
 [publish.registry]
 push = true
+# 生产建议 false；需要 :latest 时用 ship push/run --promote-latest
+tag_latest_on_default_profile = true
 
 [[publish.registry.targets]]
 type = "private"                        # dockerhub | private
@@ -216,11 +242,14 @@ remote_file = "compose.yaml"                   # 可选：远端文件名
 local_env_file = "./deploy/.env.prod"          # 可选：先上传本地 env 文件
 env_file = ".env"                              # 远端 env 文件名
 auto_env_file = true                           # 自动注入 --env-file 到 up 命令
-tag_key = "{{ vars.remote_tag_key }}"          # env 文件中存放镜像 tag 的变量名
+tag_key = "{{ vars.remote_tag_key }}"          # env 中版本别名键（默认 APP_IMAGE_TAG）
+pin = "digest"                                 # digest（默认）| tag
+digest_key = "APP_IMAGE_DIGEST"                # pin=digest 时写入内容身份
+# image_key = "APP_IMAGE"                      # 可选：写入 repo@digest
 up = "docker compose --env-file ./.env up -d --remove-orphans"
 ```
 
-部署流程：上传 compose 文件 → 上传 env 文件 → 更新 tag_key 为新版本 → 执行 `up` 命令重启容器。
+部署流程：按 release manifest 取产物 → 上传 compose/env → 按 pin 写入 digest/tag → 执行 `up`。
 
 #### Go 二进制安装
 
@@ -288,7 +317,7 @@ timeout_seconds = 5
 ```toml
 [[matrix]]
 name = "brand-a"
-default = true                              # default profile 使用 :latest 标签
+default = true                              # default profile 镜像 tag 无后缀
 env = { NEXT_PUBLIC_APP_BRAND = "brand-a" }
 vars = { brand = "brand-a" }
 
@@ -304,8 +333,6 @@ vars = { brand = "brand-b" }
 
 ## 环境变量覆盖
 
-以下环境变量可覆盖 ship.toml 中的对应配置：
-
 | 环境变量 | 覆盖目标 |
 |----------|---------|
 | `IMAGE_NAME` | `build.docker.image` |
@@ -314,7 +341,8 @@ vars = { brand = "brand-b" }
 | `ENV_FILE` | `build.docker.env_file` |
 | `REMOTE_HOST` | `deploy.compose.host` |
 | `REMOTE_PROJECT_PATH` | `deploy.compose.path` |
-| `SHIP_VERSION` | 版本号（可通过 `version.override_env` 自定义变量名） |
+| `SHIP_VERSION` | 版本号（须为真实 tag，当 `version.source=git-tag`） |
+| `SHIP_UNKNOWN_KEYS` | `error` / `warn` / `ignore` |
 
 ---
 
@@ -336,12 +364,14 @@ vars = { brand = "brand-b" }
 # 1. 初始化
 ship init
 
-# 2. 编辑 ship.toml，配置 registry 和 deploy
+# 2. 编辑 ship.toml（registry、deploy、pin=digest）
 
-# 3. 一键构建部署
-ship run -y
+# 3. 预检与发布
+ship plan -v v1.0.0
+ship doctor -v v1.0.0
+ship run -v v1.0.0 -y
 
-# 4. 回滚
+# 4. 回滚（消费历史 digest/manifest）
 ship rollback -v v1.0.0 -y
 ```
 
@@ -378,7 +408,14 @@ deploy = false
 publish = false
 
 # 或在命令行：
-# ship build -y
+# ship build -v v1.0.0 -y
+```
+
+### 场景 4：更新 agent skill
+
+```bash
+ship skill        # 安装到 .claude/skills/ship/SKILL.md
+ship skill -f     # 强制覆盖（skill 过期警告时使用）
 ```
 
 ---
@@ -386,8 +423,10 @@ publish = false
 ## 注意事项
 
 - `schema = 2` 是必须的，ship 不接受其他 schema 版本
-- `.ship/` 目录存储部署历史记录，应加入 `.gitignore`
+- `.ship/` 目录存储 runs、releases、部署历史，应加入 `.gitignore`
 - agent / CI 环境调用时务必加 `-y` 跳过交互提示
-- Docker 构建当前要求 `load = true`
+- Docker 构建当前要求 `load = true`，且 `platforms` 保持单平台
 - rollback 仅支持 compose 部署驱动
+- 独立 `deploy`/`push` 需要该版本已成功发布过（有 release manifest）
 - 版本号格式建议使用 semver（如 `v1.2.3`），与 git tag 保持一致
+- Skill frontmatter `version` 与 ship 二进制版本无关；文档变更时手动递增
