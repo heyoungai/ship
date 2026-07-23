@@ -29,6 +29,7 @@ Or step by step: `build` → `tag` → `push` → `deploy`. Prefer `run` for rea
 | Command | Purpose | Key flags |
 |---------|---------|-----------|
 | `init` | Generate `ship.toml` | `-f` |
+| `ai` / `ai init` | Thin release advisor (LLM; optional) | `-p`, `--dry-run`, `-y` |
 | `plan` | Show release plan (no side effects) | `-v`, `-p`, `--json` |
 | `doctor` | Check release readiness | `-v`, `-p` |
 | `build` / `tag` / `push` | Build, tag, publish | `-v`, `-p`, `--promote-latest` (push) |
@@ -45,6 +46,7 @@ Or step by step: `build` → `tag` → `push` → `deploy`. Prefer `run` for rea
 - Docker: `build.docker.load = true`, and **single platform** only (e.g. `linux/amd64`).
 - Unknown keys in `ship.toml` error by default; relax with `[config] unknown_keys = "warn"` or `SHIP_UNKNOWN_KEYS=warn`.
 - `.ship/` is runtime state (runs / releases / history); add it to `.gitignore`.
+- `ship ai` is an optional advisor harness (not a substitute for `plan` / `run` / `deploy`). Prefer `ship ai init --dry-run` before writing config; never ask it to run deploy/push for you.
 
 ## Dig deeper when needed
 

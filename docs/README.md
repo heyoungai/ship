@@ -9,7 +9,7 @@
 | [产品设计与边界](./product-design.md) | 产品设计 | 理解定位、职责边界、演进原则 |
 | [文档体系设计](./documentation-design.md) | 文档设计 | 调整 docs 结构、理解分层 |
 | [文档规范](./CONVENTIONS.md) | 文档治理 | 新增、重命名、归档文档 |
-| [使用指南索引](./guides/README.md) | 指南 | 快速上手、Docker 默认模式 |
+| [使用指南索引](./guides/README.md) | 指南 | 快速上手、Docker 默认模式、ship ai |
 | [工程文档索引](./engineering/README.md) | 工程契约 | 发布语义、git-tag 策略 |
 | [Change Plans](./changes/README.md) | 变更规划 | 局部演化与未实现规划 |
 | [ADR 索引](./adr/README.md) | 决策记录 | 已稳定的长期决策 |
@@ -18,7 +18,7 @@
 
 | 文档 | 状态 | 定位 |
 |------|------|------|
-| [ship AI advisor](./changes/active/ship-ai-advisor.md) | in progress | AI 发布顾问 v0（`ship ai` 可试用） |
+| [ship AI advisor](./changes/active/ship-ai-advisor.md) | in progress | AI 顾问 + [使用指南](./guides/ship-ai.md) |
 
 ## ADR
 

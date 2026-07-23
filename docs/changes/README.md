@@ -9,7 +9,7 @@
 
 | 文档 | 状态 | 定位 |
 |------|------|------|
-| [ship-ai-advisor.md](./active/ship-ai-advisor.md) | in progress | AI 发布顾问 v0（`ship ai` 可试用） |
+| [ship-ai-advisor.md](./active/ship-ai-advisor.md) | in progress | AI 顾问 v0 + vs Pi 差距分析；指南见 guides/ship-ai |
 | [ship-remote-environments.md](./active/ship-remote-environments.md) | planned | 环境名册 + `ship remote` 线上排查（未实现） |
 
 ## Completed

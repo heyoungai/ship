@@ -6,6 +6,7 @@
 
 - [产品设计与边界](../product-design.md)
 - [Docker 默认模式](docker-default-pattern.md)
+- 需要 AI 辅助生成/理解配置时：[ship ai 发布顾问](ship-ai.md)
 
 ## 1. ship 是什么
 

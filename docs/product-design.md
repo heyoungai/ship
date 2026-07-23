@@ -151,7 +151,25 @@ templates 是发布物料生成的逃生口。
 - 优先提升可观测性、失败提示、参数覆盖直觉性
 - 优先把“标准范式”做稳，而不是继续发散模型
 
-## 7. 明确不做的方向
+## 7. AI 顾问边界
+
+`ship ai` 是**发布顾问 harness**，不是第二套通用编码 agent，也不是发版执行器的替代品。
+
+对齐 [Pi](https://pi.dev/) 的薄 harness 思路：
+
+- 通用原语工具（read / write / edit / bash / grep / find）+ **极短** system
+- 领域靠仓库内配置示例、现有 `ship` CLI（如 `plan --json` / `doctor`），不堆专用 tool schema
+- 真正的 build / push / deploy / rollback 仍由用户执行确定性命令；顾问内拦截这些副作用
+
+它不负责：
+
+- 替代 Claude Code / Cursor / Pi 做通用开发
+- 在顾问会话里默默完成发版
+- 引入子 agent、内置 MCP、plan mode、重型 session/TUI 等厨房水槽能力
+
+使用说明见 [guides/ship-ai.md](./guides/ship-ai.md)；实现演进见 [changes/active/ship-ai-advisor.md](./changes/active/ship-ai-advisor.md)。
+
+## 8. 明确不做的方向
 
 为了控制复杂度，ship 应明确避免滑向这些方向：
 
@@ -161,8 +179,9 @@ templates 是发布物料生成的逃生口。
 - 无限泛化的模板变量体系
 - 以 hooks 替代 driver
 - 把 ship 变成另一个 CI 平台
+- 把 `ship ai` 做成重型通用 coding agent
 
-## 8. 一句话总结
+## 9. 一句话总结
 
 ship 不是为了统一所有脚本，而是为了把最常见、最稳定、最值得复用的发布链路产品化。
 

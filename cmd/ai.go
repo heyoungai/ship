@@ -76,9 +76,14 @@ func newAIAgent() (*ai.Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	agentsMD, err := ai.LoadAgentsMD(cwd)
+	if err != nil {
+		return nil, err
+	}
 	return ai.NewAgent(ai.Config{
 		Provider:  provider,
 		Sandbox:   sb,
+		System:    ai.SystemWithAgents(ai.DefaultSystemPrompt, agentsMD),
 		MaxTurns:  aiMaxTurns,
 		DryRun:    aiDryRun,
 		Yes:       assumeYes,

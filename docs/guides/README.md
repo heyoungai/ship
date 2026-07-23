@@ -4,3 +4,4 @@
 |------|------|
 | [快速上手](./quick-start.md) | 最短路径跑通 ship |
 | [Docker 默认模式](./docker-default-pattern.md) | Docker 主链路推荐范式 |
+| [ship ai 发布顾问](./ship-ai.md) | 极简 AI 顾问（`ship ai`） |
