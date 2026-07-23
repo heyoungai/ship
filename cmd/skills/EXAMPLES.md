@@ -1,19 +1,19 @@
-# Ship 示例
+# Ship examples
 
-需要可复制配方时再读。字段细节见 [REFERENCE.md](REFERENCE.md)。
+Read when you need a copy-paste recipe. Field details: [REFERENCE.md](REFERENCE.md).
 
-## 1. Docker 全流程
+## 1. Full Docker pipeline
 
 ```bash
 ship init
-# 编辑 ship.toml：registry + deploy.compose（pin = "digest"）
+# Edit ship.toml: registry + deploy.compose (pin = "digest")
 ship plan -v v1.0.0
 ship doctor -v v1.0.0
 ship run -v v1.0.0 -y
-ship rollback -v v1.0.0 -y   # 需要时
+ship rollback -v v1.0.0 -y   # when needed
 ```
 
-`ship.toml` 中 compose pin 最小片段：
+Minimal compose pin snippet in `ship.toml`:
 
 ```toml
 [deploy]
@@ -32,13 +32,13 @@ digest_key = "APP_IMAGE_DIGEST"
 up = "docker compose --env-file ./.env up -d --remove-orphans"
 ```
 
-生产 compose 镜像行：
+Production compose image line:
 
 ```yaml
 image: registry.example.com/ns/app@${APP_IMAGE_DIGEST}
 ```
 
-## 2. Go 二进制
+## 2. Go binary
 
 ```toml
 [build]
@@ -67,7 +67,7 @@ remote_install_path = "/usr/local/bin"
 ship run -v v1.0.0 -y
 ```
 
-## 3. 仅构建
+## 3. Build only
 
 ```toml
 [features]
@@ -77,10 +77,10 @@ publish = false
 
 ```bash
 ship build -v v1.0.0 -y
-# 或：ship run -v v1.0.0 --skip-deploy -y
+# Or: ship run -v v1.0.0 --skip-deploy -y
 ```
 
-## 4. Matrix / 单个 profile
+## 4. Matrix / single profile
 
 ```toml
 [[matrix]]

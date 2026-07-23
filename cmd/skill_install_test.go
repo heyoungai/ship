@@ -44,7 +44,7 @@ func TestWriteEmbeddedSkills(t *testing.T) {
 	if got != ExpectedSkillVersion() {
 		t.Fatalf("stamped version = %q, want %q", got, ExpectedSkillVersion())
 	}
-	if !strings.Contains(string(data), "硬性规则") {
+	if !strings.Contains(string(data), "Hard rules") {
 		t.Fatal("SKILL.md body looks unexpected")
 	}
 }

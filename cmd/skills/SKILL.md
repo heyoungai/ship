@@ -10,11 +10,11 @@ version: dev
 
 # Ship
 
-CLI 工具，流程为 **build → tag → push → deploy → verify**。配置：项目根目录 `ship.toml`（`schema = 2`）。
+CLI for **build → tag → push → deploy → verify**. Config: `ship.toml` at the project root (`schema = 2`).
 
-`ship skill` 安装时会把 frontmatter `version` 写成当前 ship 二进制版本。若 `build` / `run` / `doctor` 提示 skill 过期，执行 `ship skill -f`。
+`ship skill` stamps frontmatter `version` with the current ship binary version. If `build` / `run` / `doctor` warns that the skill is outdated, run `ship skill -f`.
 
-## 默认工作流
+## Default workflow
 
 ```bash
 ship plan -v v1.0.0
@@ -22,31 +22,31 @@ ship doctor -v v1.0.0
 ship run -v v1.0.0 -y
 ```
 
-也可分步：`build` → `tag` → `push` → `deploy`。正式发版优先用 `run`。
+Or step by step: `build` → `tag` → `push` → `deploy`. Prefer `run` for real releases.
 
-## 命令速查
+## Command cheat sheet
 
-| 命令 | 用途 | 关键 flags |
-|------|------|-----------|
-| `init` | 生成 `ship.toml` | `-f` |
-| `plan` | 展示 release 计划（无副作用） | `-v`, `-p`, `--json` |
-| `doctor` | 检查 release 条件 | `-v`, `-p` |
-| `build` / `tag` / `push` | 构建、打 tag、发布 | `-v`, `-p`, `--promote-latest`（push） |
-| `deploy` / `rollback` / `history` | 部署 / 回滚 / 历史 | `-v`, `-y`, `-n` |
-| `run` | 全流水线 | `-v`, `-p`, `--skip-deploy`, `--promote-latest` |
-| `current` / `version` / `skill` | 当前 git tag / ship 版本 / 安装本 skill | `-f`（skill） |
+| Command | Purpose | Key flags |
+|---------|---------|-----------|
+| `init` | Generate `ship.toml` | `-f` |
+| `plan` | Show release plan (no side effects) | `-v`, `-p`, `--json` |
+| `doctor` | Check release readiness | `-v`, `-p` |
+| `build` / `tag` / `push` | Build, tag, publish | `-v`, `-p`, `--promote-latest` (push) |
+| `deploy` / `rollback` / `history` | Deploy / rollback / history | `-v`, `-y`, `-n` |
+| `run` | Full pipeline | `-v`, `-p`, `--skip-deploy`, `--promote-latest` |
+| `current` / `version` / `skill` | Current git tag / ship version / install this skill | `-f` (skill) |
 
-## 硬性规则
+## Hard rules
 
-- agent / CI 调用可能弹确认的命令时，**必须加 `-y`**。
-- 默认 `version.source = "git-tag"`：`-v` / `SHIP_VERSION` 必须是**本地真实 Git tag**。构建使用 tag 源码快照（worktree），不包含未提交修改。
-- 独立 `push` / `deploy` / `rollback` 消费 `.ship/releases/` 中的 **release manifest**；尚未发布过的版本会失败（不会从当前目录偷偷补构建）。
-- 默认按 **digest** 钉部署（`APP_IMAGE_DIGEST`）。compose 镜像建议用 `@${APP_IMAGE_DIGEST}`。`deploy`/`rollback` **不会**移动 registry `:latest`；需要时用 `--promote-latest`。
-- Docker：`build.docker.load = true`，且 **单平台**（如 `linux/amd64`）。
-- `ship.toml` 未知字段默认报错；可用 `[config] unknown_keys = "warn"` 或 `SHIP_UNKNOWN_KEYS=warn` 降级。
-- `.ship/` 为运行状态（runs / releases / history），应加入 `.gitignore`。
+- When an agent or CI runs a command that may prompt for confirmation, **always pass `-y`**.
+- Default `version.source = "git-tag"`: `-v` / `SHIP_VERSION` must be a **real local Git tag**. Builds use the tag source snapshot (worktree); uncommitted changes are not included.
+- Standalone `push` / `deploy` / `rollback` consume a **release manifest** under `.ship/releases/`; versions that were never published fail (no silent rebuild from the working tree).
+- Default deploy pin is by **digest** (`APP_IMAGE_DIGEST`). Prefer `@${APP_IMAGE_DIGEST}` in compose image lines. `deploy`/`rollback` do **not** move registry `:latest`; use `--promote-latest` when needed.
+- Docker: `build.docker.load = true`, and **single platform** only (e.g. `linux/amd64`).
+- Unknown keys in `ship.toml` error by default; relax with `[config] unknown_keys = "warn"` or `SHIP_UNKNOWN_KEYS=warn`.
+- `.ship/` is runtime state (runs / releases / history); add it to `.gitignore`.
 
-## 按需深入
+## Dig deeper when needed
 
-- 配置字段与驱动：见 [REFERENCE.md](REFERENCE.md)
-- 可复制场景：见 [EXAMPLES.md](EXAMPLES.md)
+- Config fields and drivers: [REFERENCE.md](REFERENCE.md)
+- Copy-paste recipes: [EXAMPLES.md](EXAMPLES.md)
