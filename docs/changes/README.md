@@ -10,6 +10,7 @@
 | 文档 | 状态 | 定位 |
 |------|------|------|
 | [ship-ai-advisor.md](./active/ship-ai-advisor.md) | planned | AI 发布顾问（未实现） |
+| [ship-remote-environments.md](./active/ship-remote-environments.md) | planned | 环境名册 + `ship remote` 线上排查（未实现） |
 
 ## Completed
 
