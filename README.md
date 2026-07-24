@@ -96,15 +96,17 @@ ship history -n 5
 - `-v` / `SHIP_VERSION` 必须是本地真实 Git tag；构建来自该 tag 的源码快照，不切换你当前分支，也不带上未提交修改。
 - `ship plan` / `ship doctor` 可先预览计划与检查条件；`ship run` / `ship build` 会写入 `.ship/runs/`，成功发布后索引到 `.ship/releases/`。
 - 独立 `push` / `deploy` / `rollback` 按 release manifest 消费产物；尚未发布过的版本会失败。
-- 默认按 digest 钉部署（写入 `APP_IMAGE_DIGEST`，同时保留版本别名）。生产 compose 推荐：
+- 默认按 digest 钉部署（写入 `APP_IMAGE_DIGEST`，同时保留版本别名）。生产 compose **必须**用 `@digest`，推荐：
 
 ```yaml
 image: registry.example.com/ns/app@${APP_IMAGE_DIGEST}
 ```
 
+若 compose 仍按 `:tag` 拉取，请设 `pin = "tag"`；否则 v2.7.1 起会警告并自动降级。pin 身份来自 registry（buildx imagetools），不会再用本地 config digest 冒充。
+
 - `deploy` / `rollback` 不修改 registry `:latest`；需要移动 `latest` 时用 `--promote-latest`（生产建议关闭 `tag_latest_on_default_profile`）。
 
-完整设计与边界见 [docs/git-tag-release-strategy.md](docs/git-tag-release-strategy.md)。
+完整设计与边界见 [docs/git-tag-release-strategy.md](docs/git-tag-release-strategy.md)。v2.7.1 digest pin 修复复盘见 [docs/hotfix-v2.7.1-digest-pin.md](docs/hotfix-v2.7.1-digest-pin.md)。
 
 Agent skill：`ship skill` 安装整个目录到 `.claude/skills/ship/`（`SKILL.md` + `REFERENCE.md` + `EXAMPLES.md`）。`SKILL.md` 的 `version` 对齐当前 `ship version`；`build` / `run` / `doctor` 若不一致会警告，执行 `ship skill -f` 更新。
 

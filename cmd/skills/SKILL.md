@@ -41,7 +41,7 @@ ship run -v v1.0.0 -y
 - agent / CI 调用可能弹确认的命令时，**必须加 `-y`**。
 - 默认 `version.source = "git-tag"`：`-v` / `SHIP_VERSION` 必须是**本地真实 Git tag**。构建使用 tag 源码快照（worktree），不包含未提交修改。
 - 独立 `push` / `deploy` / `rollback` 消费 `.ship/releases/` 中的 **release manifest**；尚未发布过的版本会失败（不会从当前目录偷偷补构建）。
-- 默认按 **digest** 钉部署（`APP_IMAGE_DIGEST`）。compose 镜像建议用 `@${APP_IMAGE_DIGEST}`。`deploy`/`rollback` **不会**移动 registry `:latest`；需要时用 `--promote-latest`。
+- 默认按 **digest** 钉部署（`APP_IMAGE_DIGEST`）。compose 镜像须用 `@${APP_IMAGE_DIGEST}`（否则会降级 `pin=tag`）。`deploy`/`rollback` **不会**移动 registry `:latest`；需要时用 `--promote-latest`。
 - Docker：`build.docker.load = true`，且 **单平台**（如 `linux/amd64`）。
 - `ship.toml` 未知字段默认报错；可用 `[config] unknown_keys = "warn"` 或 `SHIP_UNKNOWN_KEYS=warn` 降级。
 - `.ship/` 为运行状态（runs / releases / history），应加入 `.gitignore`。
@@ -50,3 +50,4 @@ ship run -v v1.0.0 -y
 
 - 配置字段与驱动：见 [REFERENCE.md](REFERENCE.md)
 - 可复制场景：见 [EXAMPLES.md](EXAMPLES.md)
+- v2.7.1 digest pin 修复复盘：仓库内 `docs/hotfix-v2.7.1-digest-pin.md`

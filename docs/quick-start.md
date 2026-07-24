@@ -114,6 +114,8 @@ interval_seconds = 3
 timeout_seconds = 5
 ```
 
+`pin = "digest"` 时，compose 镜像行应使用 `@${APP_IMAGE_DIGEST}`；若仍按 `:tag` 拉取，请改用 `pin = "tag"`（v2.7.1 起也会自动降级并警告）。digest pin 复盘见 [hotfix-v2.7.1-digest-pin.md](./hotfix-v2.7.1-digest-pin.md)。
+
 如果你希望首次部署时由 ship 自动把本地部署资产带上去，直接使用 `deploy.compose.local_file` 和 `deploy.compose.local_env_file`。ship 会先在远端创建 `deploy.compose.path`，上传文件，再更新 `env_file` 中的镜像 tag 并执行 `docker compose up`。
 
 如果你的远端 env 文件不是默认的 `.env`（比如 `.env.prod`），只需修改 `env_file` 字段，ship 会自动将 `--env-file` 注入到 `up` 命令中（由 `auto_env_file = true` 控制，这是默认行为）。
