@@ -463,6 +463,17 @@ func TestBuildxOutputArgs_LoadDisabled(t *testing.T) {
 	}
 }
 
+func TestBuildxPullArgs(t *testing.T) {
+	if args := BuildxPullArgs(true); args != nil {
+		t.Fatalf("BuildxPullArgs(true) = %v, want nil", args)
+	}
+	got := BuildxPullArgs(false)
+	want := []string{"--pull=false"}
+	if len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("BuildxPullArgs(false) = %v, want %v", got, want)
+	}
+}
+
 func TestShellEscape(t *testing.T) {
 	got := ShellEscape("a'b")
 	want := `'a'"'"'b'`
@@ -839,6 +850,47 @@ func TestAutoEnvFile_DefaultTrue(t *testing.T) {
 	if !cfg.Deploy.Compose.AutoEnvFile {
 		t.Fatal("AutoEnvFile should default to true")
 	}
+}
+
+func TestDockerPull_DefaultTrue(t *testing.T) {
+	cfg := &Config{}
+	cfg.applyDefaults()
+	if !cfg.Build.Docker.Pull {
+		t.Fatal("build.docker.pull should default to true")
+	}
+}
+
+func TestDockerPull_LoadFromToml_False(t *testing.T) {
+	withTempConfigDir(t, map[string]string{
+		"ship.toml": `
+schema = 2
+
+[build]
+driver = "docker"
+
+[build.docker]
+image = "home"
+dockerfile = "./Dockerfile"
+platforms = ["linux/amd64"]
+pull = false
+
+[publish]
+driver = "registry"
+
+[[publish.registry.targets]]
+type = "dockerhub"
+namespace = "deali"
+image = "home"
+`,
+	}, func() {
+		cfg, err := LoadConfig("")
+		if err != nil {
+			t.Fatalf("LoadConfig error: %v", err)
+		}
+		if cfg.Build.Docker.Pull {
+			t.Fatal("build.docker.pull should be false when explicitly set in TOML")
+		}
+	})
 }
 
 func TestAutoEnvFile_LoadFromToml_False(t *testing.T) {

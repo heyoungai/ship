@@ -37,6 +37,9 @@ var buildCmd = &cobra.Command{
 		if activeCfg == nil {
 			activeCfg = cfg
 		}
+		if err := applyDockerPullFlag(cmd, activeCfg); err != nil {
+			return err
+		}
 		envFile, err := resolveExternalEnvFile(session, activeCfg, buildEnvFile)
 		if err != nil {
 			return err
@@ -69,6 +72,25 @@ func init() {
 	buildCmd.Flags().StringVarP(&buildVersion, "version", "v", "", "正式 release tag（git-tag 模式下必须存在）")
 	buildCmd.Flags().StringVar(&buildEnvFile, "env-file", "", ".env 文件路径 (默认使用配置；相对 InvocationRoot)")
 	buildCmd.Flags().StringVarP(&buildProfile, "profile", "p", "", "指定 profile 名称 (默认全部)")
+	registerDockerPullFlag(buildCmd)
+}
+
+// registerDockerPullFlag 注册 docker build 的 --pull（默认 true，与 build.docker.pull 对齐）。
+func registerDockerPullFlag(cmd *cobra.Command) {
+	cmd.Flags().Bool("pull", true, "是否检查/拉取基础镜像（false 时本地已有镜像可跳过 registry HEAD，避开 mirror 429）")
+}
+
+// applyDockerPullFlag 仅在显式传入 --pull 时覆盖配置，避免默认 true 冲掉 ship.toml 的 pull=false。
+func applyDockerPullFlag(cmd *cobra.Command, cfg *internal.Config) error {
+	if cfg == nil || !cmd.Flags().Changed("pull") {
+		return nil
+	}
+	pull, err := cmd.Flags().GetBool("pull")
+	if err != nil {
+		return err
+	}
+	cfg.Build.Docker.Pull = pull
+	return nil
 }
 
 // doBuild 按当前 build.driver 执行单个 profile 的构建。
@@ -172,6 +194,7 @@ func doDockerBuild(cfg *internal.Config, profile internal.Profile, envFile, vers
 	if cfg.Build.Docker.CacheBust {
 		args = append(args, "--no-cache")
 	}
+	args = append(args, internal.BuildxPullArgs(cfg.Build.Docker.Pull)...)
 	args = append(args, outputArgs...)
 	args = append(args, buildArgs...)
 

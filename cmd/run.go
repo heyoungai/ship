@@ -35,6 +35,9 @@ var runCmd = &cobra.Command{
 		if activeCfg == nil {
 			activeCfg = cfg
 		}
+		if err := applyDockerPullFlag(cmd, activeCfg); err != nil {
+			return err
+		}
 
 		ver := session.Version()
 		envFile, err := resolveExternalEnvFile(session, activeCfg, runEnvFile)
@@ -136,6 +139,7 @@ func init() {
 	runCmd.Flags().StringVarP(&runProfile, "profile", "p", "", "指定 profile 名称 (默认全部)")
 	runCmd.Flags().BoolVar(&runSkipDeploy, "skip-deploy", false, "跳过远程部署步骤")
 	runCmd.Flags().BoolVar(&runPromoteLatest, "promote-latest", false, "显式将 default profile 推送到 :latest")
+	registerDockerPullFlag(runCmd)
 }
 
 func buildStepTitle() string {

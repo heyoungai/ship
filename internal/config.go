@@ -91,6 +91,7 @@ type BuildDockerConfig struct {
 	LatestOnDefaultProfile bool              `toml:"latest_on_default_profile"`
 	DisableBuildkit        bool              `toml:"disable_buildkit"`
 	CacheBust              bool              `toml:"cache_bust"`
+	Pull                   bool              `toml:"pull"` // 默认 true；false 时传 --pull=false，跳过基础镜像 registry 校验
 }
 
 // BuildGoBinaryConfig 定义 Go 二进制构建细节。
@@ -271,6 +272,7 @@ func (c *Config) applyDefaults() {
 	c.Build.Docker.Load = true
 	c.Build.Docker.BuildArgsFromEnv = true
 	c.Build.Docker.LatestOnDefaultProfile = true
+	c.Build.Docker.Pull = true
 
 	c.Publish.Driver = "registry"
 	c.Publish.Registry.Push = true

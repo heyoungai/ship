@@ -67,3 +67,13 @@ func BuildxOutputArgs(platforms string, load bool) ([]string, error) {
 	}
 	return []string{"--load"}, nil
 }
+
+// BuildxPullArgs 返回 buildx --pull 相关参数。
+// pull=true 时不追加参数，保持 buildx 默认行为；pull=false 时显式传 --pull=false，
+// 以便本地已有基础镜像时跳过 registry HEAD/校验（可省开头耗时并避开 mirror 429）。
+func BuildxPullArgs(pull bool) []string {
+	if pull {
+		return nil
+	}
+	return []string{"--pull=false"}
+}
