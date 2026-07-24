@@ -9,16 +9,20 @@ import (
 
 // Config configures a single agent run (one user turn through tool loop).
 type Config struct {
-	Provider   *Provider
-	Sandbox    *Sandbox
-	System     string
-	MaxTurns   int
-	DryRun     bool
-	Yes        bool
+	Provider     *Provider
+	Sandbox      *Sandbox
+	System       string
+	MaxTurns     int
+	DryRun       bool
+	Yes          bool
 	ConfirmWrite func(path string) (bool, error)
-	// Writer receives assistant text and tool traces (optional).
+	// Writer receives assistant text when Reporter is nil (legacy / tests).
 	Writer io.Writer
-	// ToolTrace when true prints tool names to Writer.
+	// Reporter receives streaming deltas and tool events. If nil, a WriterReporter
+	// is created from Writer (ShowTools follows ToolTrace).
+	Reporter Reporter
+	// ToolTrace when true shows tool lines on the default WriterReporter.
+	// CLI typically sets an explicit Reporter that always shows tools.
 	ToolTrace bool
 }
 
@@ -46,6 +50,9 @@ func NewAgent(cfg Config) (*Agent, error) {
 	if cfg.Writer == nil {
 		cfg.Writer = io.Discard
 	}
+	if cfg.Reporter == nil {
+		cfg.Reporter = &WriterReporter{Out: cfg.Writer, ShowTools: cfg.ToolTrace}
+	}
 	a := &Agent{
 		cfg:   cfg,
 		tools: ToolDefs(),
@@ -72,29 +79,33 @@ func (a *Agent) Messages() []Message {
 // RunUser appends a user message and runs the tool loop until the model stops calling tools or MaxTurns.
 func (a *Agent) RunUser(ctx context.Context, userText string) (string, error) {
 	a.messages = append(a.messages, Message{Role: "user", Content: userText})
+	rep := a.cfg.Reporter
+	if rep == nil {
+		rep = NopReporter{}
+	}
 	var lastText string
 	for turn := 0; turn < a.cfg.MaxTurns; turn++ {
-		msg, err := a.cfg.Provider.Chat(ctx, a.messages, a.tools)
+		rep.OnTurnStart()
+		msg, err := a.cfg.Provider.ChatStream(ctx, a.messages, a.tools, rep.OnAssistantDelta)
 		if err != nil {
 			return lastText, err
 		}
 		a.messages = append(a.messages, msg)
 		if len(msg.ToolCalls) == 0 {
 			lastText = msg.Content
-			if msg.Content != "" {
-				fmt.Fprintln(a.cfg.Writer, msg.Content)
-			}
+			rep.OnAssistantEnd()
 			return lastText, nil
 		}
 		if msg.Content != "" {
-			fmt.Fprintln(a.cfg.Writer, msg.Content)
 			lastText = msg.Content
+			rep.OnAssistantEnd()
 		}
 		for _, tc := range msg.ToolCalls {
-			if a.cfg.ToolTrace {
-				fmt.Fprintf(a.cfg.Writer, "[tool] %s\n", tc.Function.Name)
-			}
+			summary := ToolCallSummary(tc.Function.Name, tc.Function.Arguments)
+			rep.OnToolStart(tc.Function.Name, summary)
 			result := ExecTool(ctx, a.env, tc.Function.Name, tc.Function.Arguments)
+			ok := ToolResultOK(result)
+			rep.OnToolEnd(tc.Function.Name, ok, ToolResultDetail(result))
 			a.messages = append(a.messages, Message{
 				Role:       "tool",
 				ToolCallID: tc.ID,

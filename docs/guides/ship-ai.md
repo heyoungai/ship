@@ -19,12 +19,21 @@ export SHIP_AI_MODEL=gpt-4.1-mini
 
 | 命令 | 作用 |
 |------|------|
-| `ship ai` | 交互 REPL（`/quit`、`/help`） |
-| `ship ai -p "..."` | 非交互单次 |
+| `ship ai` | 交互线模式 REPL（`/quit`、`/help`） |
+| `ship ai -p "..."` | 非交互单次（同样流式输出） |
 | `ship ai init` | 预设「生成/补全 ship.toml」任务 |
 | `ship ai init --dry-run` | 同上，但不落盘 |
 
 常用 flags：`--model`、`--base-url`、`--max-turns`、`--trace`、`-y`（跳过写 `ship.toml` 确认）。
+
+## 交互体验
+
+- **Streaming**：助手回复边生成边打印（OpenAI-compatible SSE）。
+- **工具行**：默认展示 `→ tool …` / `✓` / `✗`；不必再依赖 `--trace` 才看见调用。
+- **TTY**：启动横幅（model / host）、着色 `you ›` 提示符、首 token 前 spinner。
+- **非 TTY**（管道/重定向）：关闭 spinner 与颜色 chrome，仍流式吐纯文本，适合脚本。
+
+不做全屏 alt-screen agent UI；保持可滚动的线模式 REPL。
 
 ## 工具与门禁
 
@@ -39,7 +48,7 @@ export SHIP_AI_MODEL=gpt-4.1-mini
 ## 推荐用法
 
 ```bash
-ship ai init --dry-run --trace
+ship ai init --dry-run
 ship ai -p "根据仓库起草 ship.toml，不确定的标 # TODO:"
 ship ai   # 再问：解释当前 plan，或改 deploy.driver
 ```

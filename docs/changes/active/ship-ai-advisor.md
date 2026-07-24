@@ -1,6 +1,6 @@
 # Change Plan · ship AI advisor
 
-- Status: **in progress**（v0 已落地；产品边界与指南已写入活文档）
+- Status: **in progress**（v0 已落地；streaming + 线模式 REPL 美化已落地）
 - Date: 2026-07-23
 - Updated: 2026-07-24
 - Owner: TBD
@@ -20,6 +20,8 @@
 | 能力 | 说明 |
 |------|------|
 | `ship ai` / `-p` / `ai init` | REPL、print、固定 init 开场白 |
+| Streaming | OpenAI-compatible SSE；token 边收边打；JSON 回退兼容网关/mocks |
+| 线模式 UX | 横幅（model/host）、着色提示符、首 token 前 spinner、默认工具行；非 TTY 降级 |
 | 原语工具 | read / write / edit / bash / grep / find |
 | 门禁 | cwd 沙箱；拦截 deploy/run/push/rollback |
 | 校验回灌 | 写 `ship.toml` 后 `LoadConfig` |
@@ -36,24 +38,26 @@
 |---------|---------|------|
 | 极短 system + 通用原语 | 已对齐 | 保持 |
 | 明确不做 MCP / 子 agent / plan mode / 内置 todo | 已对齐（非目标） | 不补 |
-| Interactive + print | REPL + `-p` | 够用 |
+| Interactive + print | 线模式 REPL + `-p`（streaming） | 够用 |
 | 多 provider / 中途换模型 | 仅 OpenAI-compatible | **暂不补**（代理已覆盖多数；中途换模型对顾问会话价值低） |
 | Session 树 / 分支 / share | 无 | **不补**（顾问会话短；复杂度高） |
 | Compaction | 无 | **暂不补**（max-turns 先顶住；长会话再议） |
 | AGENTS.md / SYSTEM.md | 已加载 `AGENTS.md`；无 SYSTEM.md 覆盖 | SYSTEM.md **可不补**（避免与短 system 哲学冲突） |
 | Skills / prompt templates / packages | 无内置扩展市场 | **不补**（ship 领域靠 CLI + skill 给外部 agent） |
-| TUI / steer / follow-up | 无 | **不补**（REPL 足够） |
+| Streaming + 线模式美化 | 已做 | 保持（非全屏 TUI） |
+| 全屏 TUI / steer / follow-up | 无 | **不补**（不做迷你 Crush/Pi 会话窗） |
 | RPC / SDK / JSON event stream | 无 | **低优先**（有嵌入需求再做） |
 | 扩展改 harness | 无 | **不补**（Go CLI 用改代码，不搞 TS 扩展生态） |
 
 **要补的（顾问场景真正痛的）：**
 
 1. ~~文档与产品边界落地~~（已做）
-2. ~~更多无 LLM 的场景单测~~（本轮补）
-3. 自然语言「解释 plan / doctor」——**不必新子命令**；引导用 `-p` + `bash ship plan --json` 即可，观察使用后再定
-4. TLS/网络抖动重试——可选小改进，非功能差距
+2. ~~更多无 LLM 的场景单测~~（已做）
+3. ~~Streaming + 线模式 REPL 美化~~（已做）
+4. 自然语言「解释 plan / doctor」——**不必新子命令**；引导用 `-p` + `bash ship plan --json` 即可，观察使用后再定
+5. TLS/网络抖动重试——可选小改进，非功能差距
 
-**明确不追成「迷你 Pi」：** session 持久化、compaction、扩展包、TUI、多 provider UI。
+**明确不追成「迷你 Pi」：** session 持久化、compaction、扩展包、全屏 TUI、多 provider UI。
 
 ## 后续（可选）
 

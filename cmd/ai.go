@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
@@ -27,7 +28,9 @@ var aiCmd = &cobra.Command{
 	Long: `ship ai 是薄 harness：read/write/edit/bash/grep/find，领域靠短 prompt 与现有 ship CLI。
 
 需要 OPENAI_API_KEY（可选 OPENAI_BASE_URL、SHIP_AI_MODEL）。
-无密钥时请用确定性 ship init。`,
+无密钥时请用确定性 ship init。
+
+交互为线模式 REPL：流式输出助手回复，并默认展示工具调用行。`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if strings.TrimSpace(aiPrompt) != "" {
@@ -59,28 +62,29 @@ func init() {
 	aiCmd.PersistentFlags().StringVar(&aiBaseURL, "base-url", "", "OpenAI-compatible API base（默认 OPENAI_BASE_URL 或官方）")
 	aiCmd.PersistentFlags().IntVar(&aiMaxTurns, "max-turns", 20, "单次用户轮次内最大 tool loop 轮数")
 	aiCmd.PersistentFlags().BoolVar(&aiDryRun, "dry-run", false, "工具不落盘（write/edit 只预览）")
-	aiCmd.PersistentFlags().BoolVar(&aiToolTrace, "trace", false, "打印工具调用名")
+	aiCmd.PersistentFlags().BoolVar(&aiToolTrace, "trace", false, "额外详细工具输出（工具行默认已开启）")
 	aiCmd.AddCommand(aiInitCmd)
 }
 
-func newAIAgent() (*ai.Agent, error) {
+func newAIAgent() (*ai.Agent, *ai.Provider, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	sb, err := ai.NewSandbox(cwd)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	provider, err := ai.ResolveProviderFromEnv(aiModel, aiBaseURL)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	agentsMD, err := ai.LoadAgentsMD(cwd)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return ai.NewAgent(ai.Config{
+	rep := newAISessionReporter(os.Stdout)
+	agent, err := ai.NewAgent(ai.Config{
 		Provider:  provider,
 		Sandbox:   sb,
 		System:    ai.SystemWithAgents(ai.DefaultSystemPrompt, agentsMD),
@@ -88,34 +92,65 @@ func newAIAgent() (*ai.Agent, error) {
 		DryRun:    aiDryRun,
 		Yes:       assumeYes,
 		Writer:    os.Stdout,
+		Reporter:  rep,
 		ToolTrace: aiToolTrace,
 		ConfirmWrite: func(path string) (bool, error) {
 			return confirmAction(fmt.Sprintf("顾问将写入 %s，是否继续？", path))
 		},
 	})
+	if err != nil {
+		return nil, nil, err
+	}
+	return agent, provider, nil
+}
+
+func printAIBanner(provider *ai.Provider, interactive bool) {
+	host := provider.DisplayHost()
+	if host == "" {
+		host = "api.openai.com"
+	}
+	// Prefer parsing if user passed a full URL somehow via DisplayHost already stripped.
+	if u, err := url.Parse("https://" + host); err == nil && u.Host != "" {
+		host = u.Host
+	}
+	mode := "REPL"
+	if !interactive {
+		mode = "print"
+	}
+	line := fmt.Sprintf("ship ai · model=%s · host=%s · mode=%s", provider.Model, host, mode)
+	if aiDryRun {
+		line += " · dry-run"
+	}
+	internal.PrintInfo(line)
+	if interactive {
+		internal.PrintInfo("输入问题；/quit 退出 · /help 帮助")
+	}
 }
 
 func runAIPrint(ctx context.Context, userText string) error {
-	agent, err := newAIAgent()
+	agent, provider, err := newAIAgent()
 	if err != nil {
 		return err
+	}
+	if isInteractiveTerminal() {
+		printAIBanner(provider, false)
 	}
 	_, err = agent.RunUser(ctx, userText)
 	return err
 }
 
 func runAIREPL(ctx context.Context) error {
-	agent, err := newAIAgent()
+	agent, provider, err := newAIAgent()
 	if err != nil {
 		return err
 	}
-	internal.PrintInfo("ship ai — 输入问题，/quit 退出，/help 帮助")
+	printAIBanner(provider, true)
 	sc := bufio.NewScanner(os.Stdin)
 	// allow long pastes
 	buf := make([]byte, 0, 64*1024)
 	sc.Buffer(buf, 1024*1024)
 	for {
-		fmt.Fprint(os.Stdout, "> ")
+		fmt.Fprint(os.Stdout, internal.InfoStyle.Render("you")+" › ")
 		if !sc.Scan() {
 			break
 		}
@@ -128,6 +163,7 @@ func runAIREPL(ctx context.Context) error {
 			return nil
 		case line == "/help":
 			fmt.Fprintln(os.Stdout, "命令: /quit 退出 · 工具: read write edit bash grep find · ship deploy/run/push/rollback 已拦截")
+			fmt.Fprintln(os.Stdout, "输出: 流式助手回复；默认展示工具调用行")
 			continue
 		}
 		if _, err := agent.RunUser(ctx, line); err != nil {

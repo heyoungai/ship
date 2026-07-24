@@ -160,12 +160,13 @@ templates 是发布物料生成的逃生口。
 - 通用原语工具（read / write / edit / bash / grep / find）+ **极短** system
 - 领域靠仓库内配置示例、现有 `ship` CLI（如 `plan --json` / `doctor`），不堆专用 tool schema
 - 真正的 build / push / deploy / rollback 仍由用户执行确定性命令；顾问内拦截这些副作用
+- 交互为**线模式 REPL + streaming**（可读工具行）；不是全屏会话窗
 
 它不负责：
 
 - 替代 Claude Code / Cursor / Pi 做通用开发
 - 在顾问会话里默默完成发版
-- 引入子 agent、内置 MCP、plan mode、重型 session/TUI 等厨房水槽能力
+- 引入子 agent、内置 MCP、plan mode、session 树 / 全屏 agent TUI 等厨房水槽能力
 
 使用说明见 [guides/ship-ai.md](./guides/ship-ai.md)；实现演进见 [changes/active/ship-ai-advisor.md](./changes/active/ship-ai-advisor.md)。
 
