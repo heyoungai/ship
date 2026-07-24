@@ -42,7 +42,7 @@ Or step by step: `build` → `tag` → `push` → `deploy`. Prefer `run` for rea
 - When an agent or CI runs a command that may prompt for confirmation, **always pass `-y`**.
 - Default `version.source = "git-tag"`: `-v` / `SHIP_VERSION` must be a **real local Git tag**. Builds use the tag source snapshot (worktree); uncommitted changes are not included.
 - Standalone `push` / `deploy` / `rollback` consume a **release manifest** under `.ship/releases/`; versions that were never published fail (no silent rebuild from the working tree).
-- Default deploy pin is by **digest** (`APP_IMAGE_DIGEST`). Prefer `@${APP_IMAGE_DIGEST}` in compose image lines. `deploy`/`rollback` do **not** move registry `:latest`; use `--promote-latest` when needed.
+- Default deploy pin is by **digest** (`APP_IMAGE_DIGEST`). Compose image lines must use `@${APP_IMAGE_DIGEST}` (otherwise pin degrades to `tag`). `deploy`/`rollback` do **not** move registry `:latest`; use `--promote-latest` when needed.
 - Docker: `build.docker.load = true`, and **single platform** only (e.g. `linux/amd64`).
 - Unknown keys in `ship.toml` error by default; relax with `[config] unknown_keys = "warn"` or `SHIP_UNKNOWN_KEYS=warn`.
 - `.ship/` is runtime state (runs / releases / history); add it to `.gitignore`.
@@ -52,3 +52,4 @@ Or step by step: `build` → `tag` → `push` → `deploy`. Prefer `run` for rea
 
 - Config fields and drivers: [REFERENCE.md](REFERENCE.md)
 - Copy-paste recipes: [EXAMPLES.md](EXAMPLES.md)
+- v2.7.1 digest pin hotfix retrospective: `docs/changes/completed/hotfix-v2.7.1-digest-pin.md`

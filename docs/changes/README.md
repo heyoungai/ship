@@ -14,4 +14,6 @@
 
 ## Completed
 
-（暂无）
+| 文档 | 状态 | 定位 |
+|------|------|------|
+| [hotfix-v2.7.1-digest-pin.md](./completed/hotfix-v2.7.1-digest-pin.md) | fixed | v2.7.1 digest pin 记错/比错身份复盘 |
