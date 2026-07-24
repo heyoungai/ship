@@ -196,6 +196,14 @@ $env:SHIP_VERSION = "v1.0.0"
 - 临时值走覆盖
 - 不要让项目依赖大量外部环境变量才能理解发布语义
 
+本地已有基础镜像、构建开头卡在 registry HEAD 或 mirror 429 时，可用 escape hatch：
+
+```powershell
+.\ship.exe build -v v1.0.0 --pull=false
+```
+
+或在 `ship.toml` 写 `build.docker.pull = false`（默认 `true`）。CI 干净机与浮动基础镜像 tag 不要默认关闭。
+
 ## 8. env_file 配置策略
 
 `deploy.compose` 下有三个与环境文件相关的字段，推荐按下面方式理解：

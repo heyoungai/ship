@@ -299,6 +299,19 @@ CI 里一般只需要这几条原则：
 
 因为当前默认流程是 `build -> tag -> push`，中间依赖 `docker buildx --load` 把镜像先装回本地 Docker。
 
+### 构建开头卡在基础镜像校验 / mirror 429？
+
+默认会检查基础镜像是否需更新。本地已有对应基础镜像、且暂时不需要拉新层时：
+
+```powershell
+.\ship.exe build -v v1.0.0 --pull=false
+# 或在 ship.toml：
+# [build.docker]
+# pull = false
+```
+
+`pull = false` 会传给 `docker buildx build --pull=false`，跳过 registry HEAD/校验。CI 干净机或浮动 tag（如 `python:3.12`）不要默认关闭。
+
 ## 8. 最后建议
 
 第一次接入时，不要一上来就把所有 hooks、templates、matrix 全开。

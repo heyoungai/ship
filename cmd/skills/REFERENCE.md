@@ -54,7 +54,7 @@ Built-in template vars: `version`, `module`, `image_name`, `project.*`, `profile
 
 | Driver | Block |
 |--------|-------|
-| `docker` | `[build.docker]` — `image`, `platforms` (single), `dockerfile`, `env_file`, `load=true` |
+| `docker` | `[build.docker]` — `image`, `platforms` (single), `dockerfile`, `env_file`, `load=true`, `pull=true` (set `false` / `--pull=false` to skip base-image registry HEAD), `cache_bust` |
 | `go-binary` | `[build.go]` — `main`, `output`, `goos`, `goarch`, `ldflags` |
 | `command` | `[build.command]` — `run`, `cwd`, `outputs` |
 

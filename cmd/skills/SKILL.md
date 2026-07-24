@@ -32,9 +32,9 @@ Or step by step: `build` → `tag` → `push` → `deploy`. Prefer `run` for rea
 | `ai` / `ai init` | Thin release advisor (LLM; optional) | `-p`, `--dry-run`, `-y` |
 | `plan` | Show release plan (no side effects) | `-v`, `-p`, `--json` |
 | `doctor` | Check release readiness | `-v`, `-p` |
-| `build` / `tag` / `push` | Build, tag, publish | `-v`, `-p`, `--promote-latest` (push) |
+| `build` / `tag` / `push` | Build, tag, publish | `-v`, `-p`, `--pull` (build), `--promote-latest` (push) |
 | `deploy` / `rollback` / `history` | Deploy / rollback / history | `-v`, `-y`, `-n` |
-| `run` | Full pipeline | `-v`, `-p`, `--skip-deploy`, `--promote-latest` |
+| `run` | Full pipeline | `-v`, `-p`, `--pull`, `--skip-deploy`, `--promote-latest` |
 | `current` / `version` / `skill` | Current git tag / ship version / install this skill | `-f` (skill) |
 
 ## Hard rules
@@ -44,6 +44,7 @@ Or step by step: `build` → `tag` → `push` → `deploy`. Prefer `run` for rea
 - Standalone `push` / `deploy` / `rollback` consume a **release manifest** under `.ship/releases/`; versions that were never published fail (no silent rebuild from the working tree).
 - Default deploy pin is by **digest** (`APP_IMAGE_DIGEST`). Compose image lines must use `@${APP_IMAGE_DIGEST}` (otherwise pin degrades to `tag`). `deploy`/`rollback` do **not** move registry `:latest`; use `--promote-latest` when needed.
 - Docker: `build.docker.load = true`, and **single platform** only (e.g. `linux/amd64`).
+- Default `build.docker.pull = true`. Local base image already present and registry HEAD / mirror 429 stalls: `ship build|run --pull=false` or `pull = false` in toml. Do **not** default this off on clean CI or floating base tags.
 - Unknown keys in `ship.toml` error by default; relax with `[config] unknown_keys = "warn"` or `SHIP_UNKNOWN_KEYS=warn`.
 - `.ship/` is runtime state (runs / releases / history); add it to `.gitignore`.
 - `ship ai` is an optional advisor harness (not a substitute for `plan` / `run` / `deploy`). Prefer `ship ai init --dry-run` before writing config; never ask it to run deploy/push for you.

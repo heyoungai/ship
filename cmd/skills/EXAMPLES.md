@@ -80,6 +80,17 @@ ship build -v v1.0.0 -y
 # Or: ship run -v v1.0.0 --skip-deploy -y
 ```
 
+### Skip base-image pull / registry HEAD (local mirror 429)
+
+When the base image is already local and build stalls on registry HEAD or mirror rate limits:
+
+```bash
+ship build -v v1.0.0 --pull=false -y
+# Or in ship.toml: [build.docker] pull = false
+```
+
+Keep default `pull = true` for clean CI agents and floating tags (e.g. `python:3.12`).
+
 ## 4. Matrix / single profile
 
 ```toml
