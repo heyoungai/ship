@@ -37,7 +37,13 @@ var deployCmd = &cobra.Command{
 
 		pin, degraded := internal.ResolveComposePin(cfg.Deploy.Compose.Pin, manifest.PrimaryImageDigest())
 		if degraded {
-			internal.PrintWarning("manifest 无 digest，deploy.compose.pin 降级为 tag")
+			internal.PrintWarning("manifest 无可用 registry pin digest，deploy.compose.pin 降级为 tag")
+		}
+		if pin == "digest" {
+			if p, reason := effectiveComposeDigestPin(cfg, session, pin); p != pin {
+				pin = p
+				internal.PrintWarning(reason)
+			}
 		}
 		if err := verifyManifestDigests(manifest, pin == "digest"); err != nil {
 			return err
@@ -199,7 +205,13 @@ func composeEnvUpdates(cfg *internal.Config, version string, profile internal.Pr
 
 	pin, degraded := internal.ResolveComposePin(cfg.Deploy.Compose.Pin, digest)
 	if degraded {
-		internal.PrintWarning("manifest 无 digest，本次部署 pin 降级为 tag")
+		internal.PrintWarning("manifest 无可用 registry pin digest，本次部署 pin 降级为 tag")
+	}
+	if pin == "digest" {
+		if p, reason := effectiveComposeDigestPin(cfg, session, pin); p != pin {
+			pin = p
+			internal.PrintWarning(reason)
+		}
 	}
 	if pin == "digest" {
 		digestKey := strings.TrimSpace(cfg.Deploy.Compose.DigestKey)
@@ -301,12 +313,12 @@ func verifyManifestDigests(manifest *internal.ReleaseManifest, hardFail bool) er
 		if a.Type != internal.ArtifactTypeImage || a.Ref == "" || a.Digest == "" {
 			continue
 		}
-		remote, exists, err := internal.InspectRemoteDigest(a.Ref)
+		remotePin, exists, err := internal.ResolveRegistryPinDigest(a.Ref)
 		if err != nil {
 			if hardFail {
 				return fmt.Errorf("无法校验远端 digest (%s): %w", a.Ref, err)
 			}
-			internal.PrintWarning(fmt.Sprintf("无法校验远端 digest (%s): %v", a.Ref, err))
+			internal.PrintWarning(fmt.Sprintf("无法校验远端 digest (%s): %v（当前按 tag 部署，仅警告）", a.Ref, err))
 			continue
 		}
 		if !exists {
@@ -315,12 +327,121 @@ func verifyManifestDigests(manifest *internal.ReleaseManifest, hardFail bool) er
 			}
 			continue
 		}
-		got := primaryDigestToken(remote)
-		if got != "" && got != a.Digest && !strings.HasPrefix(remote, a.Digest) {
-			return fmt.Errorf("远端 %s digest 与 manifest 不一致：remote=%s manifest=%s", a.Ref, got, a.Digest)
+		if remotePin == "" {
+			// index 存在但无 pin digest：尝试用 manifest 指纹做成员比对（兼容旧逻辑）。
+			fp, fpExists, fpErr := internal.InspectRemoteDigest(a.Ref)
+			if fpErr != nil {
+				if hardFail {
+					return fmt.Errorf("无法校验远端 digest (%s): %w", a.Ref, fpErr)
+				}
+				internal.PrintWarning(fmt.Sprintf("无法校验远端 digest (%s): %v（当前按 tag 部署，仅警告）", a.Ref, fpErr))
+				continue
+			}
+			if !fpExists {
+				if hardFail {
+					return fmt.Errorf("远端不存在镜像 %s，无法按 digest 部署", a.Ref)
+				}
+				continue
+			}
+			if internal.DigestsMatch(a.Digest, fp) {
+				continue
+			}
+			msg := fmt.Sprintf("远端 %s digest 与 manifest 不一致：remote=<index> manifest=%s", a.Ref, a.Digest)
+			if hardFail {
+				return fmt.Errorf("%s；若为 v2.7.0 误记的本地 config digest，请设 pin=\"tag\" 或重新 push", msg)
+			}
+			internal.PrintWarning(msg + "（当前按 tag 部署，仅警告）")
+			continue
 		}
+		if internal.DigestsMatch(a.Digest, remotePin) {
+			continue
+		}
+		// 再比对完整 manifest 指纹，识别「config digest ∈ index 成员」等兼容情况。
+		if fp, ok, err := internal.InspectRemoteDigest(a.Ref); err == nil && ok && internal.DigestsMatch(a.Digest, fp) {
+			continue
+		}
+		msg := fmt.Sprintf("远端 %s digest 与 manifest 不一致：remote=%s manifest=%s", a.Ref, remotePin, a.Digest)
+		if hardFail {
+			return fmt.Errorf("%s；若为 v2.7.0 误记的本地 config digest，请设 pin=\"tag\" 或重新 push", msg)
+		}
+		internal.PrintWarning(msg + "（当前按 tag 部署，仅警告）")
 	}
 	return nil
+}
+
+// effectiveComposeDigestPin 在 pin=digest 时检查 compose 是否真的按 @digest 拉取。
+// 若本地 compose 可检查且未使用 digest 引用，则降级为 tag，避免只写 env 却仍按 tag 部署时硬失败。
+func effectiveComposeDigestPin(cfg *internal.Config, session *releaseSession, pin string) (string, string) {
+	if pin != "digest" || cfg == nil {
+		return pin, ""
+	}
+	if strings.TrimSpace(cfg.Deploy.Compose.ImageKey) != "" {
+		return "digest", ""
+	}
+	digestKey := strings.TrimSpace(cfg.Deploy.Compose.DigestKey)
+	if digestKey == "" {
+		digestKey = "APP_IMAGE_DIGEST"
+	}
+	localFile := strings.TrimSpace(cfg.Deploy.Compose.LocalFile)
+	if localFile == "" || strings.Contains(localFile, "{{") {
+		return "digest", ""
+	}
+	path := resolveComposeCheckPath(session, localFile)
+	uses, checked := composeFileUsesDigestPin(path, digestKey)
+	if !checked {
+		return "digest", ""
+	}
+	if !uses {
+		return "tag", fmt.Sprintf(
+			"compose 未使用 @${%s}（或等价 digest 引用），deploy.compose.pin 降级为 tag",
+			digestKey,
+		)
+	}
+	return "digest", ""
+}
+
+func resolveComposeCheckPath(session *releaseSession, localFile string) string {
+	if filepath.IsAbs(localFile) {
+		return localFile
+	}
+	if session != nil {
+		if root := session.SourceRoot(); root != "" {
+			candidate := filepath.Join(root, localFile)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
+		}
+		if root := session.InvocationRoot(); root != "" {
+			candidate := filepath.Join(root, localFile)
+			if _, err := os.Stat(candidate); err == nil {
+				return candidate
+			}
+		}
+	}
+	return localFile
+}
+
+func composeFileUsesDigestPin(path, digestKey string) (uses bool, checked bool) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, false
+	}
+	content := string(data)
+	candidates := []string{
+		"@${" + digestKey + "}",
+		"@$" + digestKey,
+		"@{" + digestKey + "}",
+	}
+	for _, c := range candidates {
+		if strings.Contains(content, c) {
+			return true, true
+		}
+	}
+	// image_key 场景外：任意 @${...DIGEST...} 也视为 digest pin。
+	if strings.Contains(content, "@${") && strings.Contains(strings.ToUpper(content), "DIGEST") {
+		return true, true
+	}
+	return false, true
 }
 
 // validateRenderedComposeConfig 校验 compose driver 渲染后的关键字段，避免把空值带到远端命令阶段。

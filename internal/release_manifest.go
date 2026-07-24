@@ -282,12 +282,13 @@ func writeJSONFile(path string, v any) error {
 	return nil
 }
 
-// InspectRemoteDigest 导出远端 digest 查询，供 push 后写入 manifest。
+// InspectRemoteDigest 导出远端 manifest 指纹查询（可能为 config+layers 或 index: 聚合串）。
+// 若需要可用于 @digest 的 pin 身份，请使用 ResolveRegistryPinDigest。
 func InspectRemoteDigest(ref string) (digest string, exists bool, err error) {
 	return remoteManifestDigest(ref)
 }
 
-// InspectLocalDigest 导出本地镜像指纹查询。
+// InspectLocalDigest 导出本地镜像指纹查询（config Id + layers，不可直接当 pin）。
 func InspectLocalDigest(ref string) (string, error) {
 	return localImageDigest(ref)
 }

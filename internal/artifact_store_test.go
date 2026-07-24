@@ -54,6 +54,12 @@ func TestImageDigestRef(t *testing.T) {
 	if got != "reg/ns/app@sha256:dead" {
 		t.Fatalf("got %q", got)
 	}
+	if ImageDigestRef("reg/ns/app:v1", "index:sha256:a,sha256:b") != "" {
+		t.Fatal("index aggregate must not produce @digest ref")
+	}
+	if ImageDigestRef("reg/ns/app:v1", "sha256:cfg [\"sha256:l1\"]") != "" {
+		t.Fatal("config fingerprint must not produce @digest ref")
+	}
 }
 
 func TestResolveComposePin(t *testing.T) {
@@ -64,6 +70,10 @@ func TestResolveComposePin(t *testing.T) {
 	pin, degraded = ResolveComposePin("digest", "")
 	if pin != "tag" || !degraded {
 		t.Fatalf("expected degrade to tag, got pin=%s degraded=%v", pin, degraded)
+	}
+	pin, degraded = ResolveComposePin("digest", "index:sha256:a,sha256:b")
+	if pin != "tag" || !degraded {
+		t.Fatalf("expected degrade for index aggregate, got pin=%s degraded=%v", pin, degraded)
 	}
 	pin, degraded = ResolveComposePin("tag", "sha256:abc")
 	if pin != "tag" || degraded {
