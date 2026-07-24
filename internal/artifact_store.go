@@ -107,6 +107,7 @@ func ImageRepoFromRef(ref string) string {
 }
 
 // ImageDigestRef 生成 repo@sha256:... 形式。
+// digest 必须是可钉扎的 registry content digest；拒绝 config 指纹与 index: 聚合串。
 func ImageDigestRef(imageRef, digest string) string {
 	repo := ImageRepoFromRef(imageRef)
 	digest = strings.TrimSpace(digest)
@@ -116,10 +117,13 @@ func ImageDigestRef(imageRef, digest string) string {
 	if !strings.HasPrefix(digest, "sha256:") {
 		digest = "sha256:" + digest
 	}
+	if !IsPinableDigest(digest) {
+		return ""
+	}
 	return repo + "@" + digest
 }
 
-// ResolveComposePin 返回实际 pin 模式：配置为 digest 但无 digest 时降级为 tag。
+// ResolveComposePin 返回实际 pin 模式：配置为 digest 但无可用 pin digest 时降级为 tag。
 func ResolveComposePin(configuredPin, digest string) (pin string, degraded bool) {
 	pin = strings.ToLower(strings.TrimSpace(configuredPin))
 	if pin == "" {
@@ -128,7 +132,7 @@ func ResolveComposePin(configuredPin, digest string) (pin string, degraded bool)
 	if pin != "digest" && pin != "tag" {
 		pin = "digest"
 	}
-	if pin == "digest" && strings.TrimSpace(digest) == "" {
+	if pin == "digest" && !IsPinableDigest(digest) {
 		return "tag", true
 	}
 	return pin, false

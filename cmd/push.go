@@ -131,10 +131,23 @@ func doRegistryPush(cfg *internal.Config, version string, profile internal.Profi
 		}
 
 		digest := ""
-		if d, exists, err := internal.InspectRemoteDigest(target); err == nil && exists {
-			digest = primaryDigestToken(d)
-		} else if localDigest, err := internal.InspectLocalDigest(target); err == nil {
-			digest = primaryDigestToken(localDigest)
+		if d, exists, err := internal.ResolveRegistryPinDigest(target); err != nil {
+			internal.PrintWarning(fmt.Sprintf(
+				"获取 registry pin digest 失败 (%s): %v；manifest 不写入 digest（deploy 将按 tag，避免把本地 config digest 误记为 pin）",
+				target, err,
+			))
+		} else if exists && d != "" {
+			digest = d
+		} else if exists {
+			internal.PrintWarning(fmt.Sprintf(
+				"远端 %s 为 manifest list/index 且无法解析 index digest；manifest 不写入 pin digest（请升级 buildx 或改用 pin=tag）",
+				target,
+			))
+		} else {
+			internal.PrintWarning(fmt.Sprintf(
+				"远端尚未可读到 digest (%s)；manifest 不写入 pin digest，不回退本地 config digest",
+				target,
+			))
 		}
 		if session != nil {
 			platform := cfg.Build.Platforms
@@ -192,18 +205,6 @@ func resolveLocalImageRef(cfg *internal.Config, profile internal.Profile, runID 
 		return cfg.ImageRef(cfg.BuildSourceTagForRun(runID, profile))
 	}
 	return cfg.ImageRef(cfg.BuildSourceTag(profile))
-}
-
-func primaryDigestToken(fingerprint string) string {
-	fingerprint = strings.TrimSpace(fingerprint)
-	if fingerprint == "" {
-		return ""
-	}
-	fields := strings.Fields(fingerprint)
-	if len(fields) == 0 {
-		return fingerprint
-	}
-	return fields[0]
 }
 
 // doSCPPush 按当前 profile 渲染 scp 发布目标并上传产物。

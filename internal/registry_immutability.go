@@ -25,7 +25,7 @@ func EnsureRegistryTagImmutable(localRef, remoteRef string) (skip bool, err erro
 		return false, fmt.Errorf("读取本地镜像 digest 失败 (%s): %w", localRef, err)
 	}
 
-	if digestsCompatible(localDigest, remoteDigest) {
+	if DigestsMatch(localDigest, remoteDigest) {
 		PrintInfo(fmt.Sprintf("远端已存在相同内容: %s (%s)，跳过 push", remoteRef, shortDigest(remoteDigest)))
 		return true, nil
 	}
@@ -34,6 +34,58 @@ func EnsureRegistryTagImmutable(localRef, remoteRef string) (skip bool, err erro
 		"拒绝覆盖远端版本 %s：已有 digest %s，本地 digest %s；请发布新版本而不是覆盖正式 tag",
 		remoteRef, shortDigest(remoteDigest), shortDigest(localDigest),
 	)
+}
+
+// ResolveRegistryPinDigest 解析可用于 image@sha256:... 钉扎的 registry content digest。
+// 优先 docker buildx imagetools（对 buildx multi-arch index 返回 index digest）；
+// 不再把本地 config digest（docker image inspect .Id）当作 pin 身份。
+func ResolveRegistryPinDigest(ref string) (digest string, exists bool, err error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", false, fmt.Errorf("镜像引用为空")
+	}
+
+	if d, ok, err := registryDigestViaImagetools(ref); err != nil {
+		// imagetools 在部分环境下不可用；继续 fallback，不把该错误直接抛出。
+		_ = err
+	} else if ok {
+		return d, true, nil
+	}
+
+	fp, exists, err := remoteManifestDigest(ref)
+	if err != nil {
+		return "", false, err
+	}
+	if !exists {
+		return "", false, nil
+	}
+	if d := PinDigestToken(fp); IsPinableDigest(d) {
+		return d, true, nil
+	}
+	// manifest list/index：没有 imagetools 时无法得到可 @digest 的 index digest。
+	// 返回 exists=true 且 digest=""，调用方应跳过写入 pin，而不是回退本地 config digest。
+	return "", true, nil
+}
+
+func registryDigestViaImagetools(ref string) (digest string, ok bool, err error) {
+	cmd := exec.Command("docker", "buildx", "imagetools", "inspect", ref, "--format", "{{.Digest}}")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.ToLower(string(out) + err.Error())
+		if strings.Contains(msg, "no such") ||
+			strings.Contains(msg, "not found") ||
+			strings.Contains(msg, "manifest unknown") ||
+			strings.Contains(msg, "name unknown") ||
+			strings.Contains(msg, "does not exist") {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("imagetools inspect 失败 (%s): %s", ref, strings.TrimSpace(string(out)))
+	}
+	d := strings.TrimSpace(string(out))
+	if !IsPinableDigest(d) {
+		return "", false, nil
+	}
+	return d, true, nil
 }
 
 func remoteManifestDigest(ref string) (digest string, exists bool, err error) {
@@ -144,6 +196,99 @@ func digestFromManifestObject(m map[string]any) string {
 	return ""
 }
 
+// IsPinableDigest 判断是否为可用于 repo@digest 的 registry content digest。
+// 拒绝本地 config 指纹（含空格/layer JSON）、以及 invent 的 index:/list: 聚合串。
+func IsPinableDigest(d string) bool {
+	d = strings.TrimSpace(d)
+	if d == "" {
+		return false
+	}
+	if strings.HasPrefix(d, "index:") || strings.HasPrefix(d, "list:") {
+		return false
+	}
+	if strings.ContainsAny(d, " ,[") {
+		return false
+	}
+	if !strings.HasPrefix(d, "sha256:") {
+		return false
+	}
+	hex := d[len("sha256:"):]
+	if hex == "" {
+		return false
+	}
+	for _, r := range hex {
+		switch {
+		case r >= '0' && r <= '9', r >= 'a' && r <= 'f', r >= 'A' && r <= 'F':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// PinDigestToken 从指纹中提取可用于 pin 的 sha256 token；无法钉扎时返回空。
+func PinDigestToken(fingerprint string) string {
+	fingerprint = strings.TrimSpace(fingerprint)
+	if fingerprint == "" {
+		return ""
+	}
+	if strings.HasPrefix(fingerprint, "index:") || strings.HasPrefix(fingerprint, "list:") {
+		return ""
+	}
+	fields := strings.Fields(fingerprint)
+	if len(fields) == 0 {
+		return ""
+	}
+	tok := fields[0]
+	if !IsPinableDigest(tok) {
+		return ""
+	}
+	return tok
+}
+
+// DigestsMatch 比较 recorded 与 remote 指纹/ pin digest 是否指向同一发布身份。
+// 支持：完全相等、config/layer 兼容、以及 pin digest ∈ index/list 成员。
+func DigestsMatch(recorded, remote string) bool {
+	recorded = strings.TrimSpace(recorded)
+	remote = strings.TrimSpace(remote)
+	if recorded == "" || remote == "" {
+		return false
+	}
+	if recorded == remote {
+		return true
+	}
+	if digestsCompatible(recorded, remote) {
+		return true
+	}
+
+	recPin := PinDigestToken(recorded)
+	if recPin == "" && IsPinableDigest(recorded) {
+		recPin = recorded
+	}
+	remPin := PinDigestToken(remote)
+	if remPin == "" && IsPinableDigest(remote) {
+		remPin = remote
+	}
+	if recPin != "" && remPin != "" && recPin == remPin {
+		return true
+	}
+	if recPin != "" {
+		for _, m := range indexMembers(remote) {
+			if m == recPin {
+				return true
+			}
+		}
+	}
+	if remPin != "" {
+		for _, m := range indexMembers(recorded) {
+			if m == remPin {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func digestsCompatible(local, remote string) bool {
 	local = strings.TrimSpace(local)
 	remote = strings.TrimSpace(remote)
@@ -160,9 +305,28 @@ func digestsCompatible(local, remote string) bool {
 	if localID != "" && localID == remoteID {
 		return true
 	}
-	// Compare layer sets when both encode layers.
+	// recorded/config digest ∈ remote index 成员（manifest digest）
+	if IsPinableDigest(localID) {
+		for _, m := range indexMembers(remote) {
+			if m == localID {
+				return true
+			}
+		}
+	}
+	if IsPinableDigest(remoteID) {
+		for _, m := range indexMembers(local) {
+			if m == remoteID {
+				return true
+			}
+		}
+	}
+	// Compare layer sets when both encode layers（非 index 聚合）。
 	localLayers := extractLayerDigests(local)
 	remoteLayers := extractLayerDigests(remote)
+	if isIndexFingerprint(local) || isIndexFingerprint(remote) {
+		// index 成员是 manifest digest，与 RootFS layers 不可比。
+		return false
+	}
 	if len(localLayers) == 0 || len(remoteLayers) == 0 {
 		return false
 	}
@@ -175,6 +339,20 @@ func digestsCompatible(local, remote string) bool {
 		}
 	}
 	return true
+}
+
+func isIndexFingerprint(fingerprint string) bool {
+	fingerprint = strings.TrimSpace(fingerprint)
+	return strings.HasPrefix(fingerprint, "index:") || strings.HasPrefix(fingerprint, "list:")
+}
+
+func indexMembers(fingerprint string) []string {
+	fingerprint = strings.TrimSpace(fingerprint)
+	if !isIndexFingerprint(fingerprint) {
+		return nil
+	}
+	_, rest, _ := strings.Cut(fingerprint, ":")
+	return splitNonEmpty(rest, ",")
 }
 
 func extractLayerDigests(fingerprint string) []string {
