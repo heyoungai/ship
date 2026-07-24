@@ -21,6 +21,7 @@
 | [ship AI advisor](./changes/active/ship-ai-advisor.md) | in progress | AI 顾问 + [使用指南](./guides/ship-ai.md) |
 | [ship remote environments](./changes/active/ship-remote-environments.md) | planned | 环境名册 + `ship remote` |
 | [deploy sync 与外部输入](./changes/active/deploy-sync-and-external-inputs.md) | planned | InvocationRoot sync；digest 见 v2.7.1 hotfix |
+| [正式 tag 不可变与 run 重试](./changes/active/immutable-tag-retry.md) | planned | push 幂等误杀；deploy 提示 / 阶段续跑 |
 
 ## ADR
 

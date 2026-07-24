@@ -25,6 +25,8 @@ xingwei-car-mods 已用 **方案 2** 临时绕过：默认 deploy 不同步 data
 
 **不在本 change 范围：** digest 记错/比错身份（已由 v2.7.1 hotfix 覆盖）。若仍有 doctor / 旧 manifest 迁移缺口，见该复盘「后续」小节，可另开小单或并入本计划 Phase 0 检查项。
 
+**正交问题：** 「push 已成功后再次 `ship run` 被不可变检查误杀 / 缺少续跑」见 [`immutable-tag-retry.md`](./immutable-tag-retry.md)。
+
 ## 目标
 
 1. **路径语义清晰**：步骤/同步目标可声明物料来自 `source`（版本化）或 `invocation`（工作区外部输入）。

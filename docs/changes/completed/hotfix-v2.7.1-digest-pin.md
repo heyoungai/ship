@@ -94,3 +94,4 @@ digest_key = "APP_IMAGE_DIGEST"
 - 对「仅有本地 daemon、无 imagetools」环境给出更明确的 doctor 检查
 - 旧 v2.7.0 manifest 的自动迁移 / 明确提示「请重新 push」
 - 将 digest pin 契约写入 ADR 或 engineering 策略正文（与 `git-tag-release-strategy` 对齐）
+- **Push 不可变误杀与 `ship run` 重试幂等**：deploy pin 已修，但 `EnsureRegistryTagImmutable` 仍可能用不同身份切片误判；见 [`../active/immutable-tag-retry.md`](../active/immutable-tag-retry.md)
