@@ -7,3 +7,4 @@
 | [重构上下文](./refactor-context.md) | 历史重构背景 |
 | [ship.toml v2 草案](./ship-toml-v2-draft.md) | 早期配置模型草案 |
 | [ship v3 设计](./ship-v3.md) | 远期架构设想 |
+| [Go 终端 Agent TUI](./go-agent-tui.md) | Crush/Pi 等对照；`ship ai` 全屏会话取舍 |

@@ -5,7 +5,8 @@
 - Updated: 2026-07-24
 - Owner: TBD
 
-> 使用说明：[guides/ship-ai.md](../../guides/ship-ai.md)。产品边界：[product-design.md](../../product-design.md) §7。本文保留演进与差距分析。
+> 使用说明：[guides/ship-ai.md](../../guides/ship-ai.md)。产品边界：[product-design.md](../../product-design.md) §7。本文保留演进与差距分析。  
+> 全屏 TUI 对照调研（research，未拍板）：[go-agent-tui.md](../../research/go-agent-tui.md)。
 
 ## 目标
 
