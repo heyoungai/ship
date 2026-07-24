@@ -11,6 +11,7 @@
 |------|------|------|
 | [ship-ai-advisor.md](./active/ship-ai-advisor.md) | in progress | AI 顾问 v0 + vs Pi 差距分析；指南见 guides/ship-ai |
 | [ship-remote-environments.md](./active/ship-remote-environments.md) | planned | 环境名册 + `ship remote` 线上排查（未实现） |
+| [deploy-sync-and-external-inputs.md](./active/deploy-sync-and-external-inputs.md) | planned | steps 锚定 InvocationRoot + 一等 sync（digest 已由 v2.7.1 覆盖） |
 
 ## Completed
 
