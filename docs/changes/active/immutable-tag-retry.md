@@ -1,6 +1,6 @@
 # Change Plan · 正式 tag 不可变校验与 ship run 重试
 
-- Status: **planned**（未开始编码）
+- Status: **in progress**（P0 push 幂等与冲突提示已实现；run checkpoint / resume 待实现）
 - Date: 2026-07-24
 - Owner: TBD
 - Related:
@@ -82,6 +82,22 @@ buildx `--load` 且带 attestation 时，同一次构建会同时出现：
 2. **冲突可操作**：真正内容冲突时，错误信息区分场景，并提示 `ship deploy -v VER` vs 打新 tag。
 3. **（可选）阶段续跑**：支持从 publish/deploy 续跑，避免「只差部署」时整链重来。
 
+## 实现进展（2026-07-25）
+
+已完成：
+
+1. `EnsureRegistryTagImmutable` 同时收集本地 config/layers、已知 `RepoDigests`、远端 registry pin 与 manifest/index 身份。
+2. 远端为 OCI index/list 时，递归 inspect 成员，将平台 manifest 展开为 config/layers 后再比较；可处理 buildx `--load` + provenance attestation 的重试场景。
+3. 任一可证明等价的身份匹配即跳过 push；无法证明等价仍保守拒绝。
+4. config 不同但 layers 相同不再视为等价，避免 `ENV`、`ENTRYPOINT`、labels 等无新 layer 的变更被误放行。
+5. 冲突错误区分“内容不一致”和“远端 index 无法完整解析”，并同时给出 `ship deploy -v VER -y` 与打新 tag 两条路径。
+6. 回归测试覆盖 registry pin / index 成员 / config 指纹组合、真实冲突、相同 layers 不同 config，以及模拟 Docker CLI 的 attestation index 重试。
+
+待完成：
+
+- run 阶段 checkpoint、失败摘要与显式 resume。
+- 基于 checkpoint 的安全自动续跑；在此之前，相同命令会重新 build，但 publish 已可幂等跳过。
+
 ## 非目标
 
 - 不取消正式 tag 不可变策略（覆盖不同内容仍应拒绝）
@@ -121,17 +137,87 @@ buildx `--load` 且带 attestation 时，同一次构建会同时出现：
 
 可选：`ship doctor -v VER` 增加「远端 tag 是否已存在 / 本地 release manifest 是否已 published」。
 
-### C. `ship run` 阶段续跑（P1）
+### C. `ship run` 阶段续跑（P1，交互提案）
 
-示意：
+#### C.1 产品语义
 
-| 机制 | 说明 |
+`ship run` 应从“一次性脚本”演进为“把某个 release 收敛到已发布、已部署、已验证状态”：
+
+- 首次执行：创建 run，依次推进阶段并在每个阶段完成后原子 checkpoint。
+- 重试同一版本：先寻找身份一致且可验证的失败 run；能安全复用的阶段显示为 `reuse`，其余阶段执行。
+- 已成功发布但 deploy 失败：复用已发布 digest，从 deploy 继续，不再触碰 registry 写路径。
+- 无法证明状态一致：不开启猜测式续跑，要求显式重建、仅部署或新版本。
+
+release manifest 与 run checkpoint 分工不同：
+
+- release manifest 记录“发布了什么”（source + artifact）。
+- run checkpoint 记录“流程走到哪里”（stage status + failure + stage-scoped inputs）。
+
+#### C.2 推荐命令面
+
+| 命令 | 语义 |
 |------|------|
-| `ship run -v VER --from deploy` | 跳过 build/tag/push，要求 release manifest 已有 published image |
-| `ship run -v VER --resume` | 读取 `.ship/runs/<run_id>` 或最近失败阶段，从下一阶段继续 |
-| publish 幂等跳过 | A 落地后，全量 `ship run` 重试也能自然通过 |
+| `ship run -v VER` | 正常入口；当前先依靠 publish 幂等，未来自动发现唯一兼容的失败 run 并展示复用计划 |
+| `ship run --resume RUN_ID` | 从指定 run 的首个未完成阶段继续；执行前重新验证身份与产物 |
+| `ship run --resume` | 仅在能找到唯一兼容失败 run 时使用；有多个候选则列出并拒绝猜测 |
+| `ship deploy -v VER` | 明确消费已发布 artifact，仅部署；仍是“上次 push 成功、只差 deploy”的最短命令 |
+| `ship run -v VER --restart` | 显式开始全新 run；不会覆盖不同内容的正式 tag |
 
-**验收：** push 已成功的版本，`--from deploy` 不再触碰 registry 写路径。
+第一版不建议增加 `--from deploy`：已有 `ship deploy` 表达该意图；任意 `--from` 容易让用户绕过 artifact 和 stage 前置条件。若未来确需通用 `--from`，它应只是高级调试入口，并执行与 resume 相同的前置校验。
+
+#### C.3 可续跑条件
+
+候选 run 必须同时满足：
+
+1. version、source ref、source commit 完全一致。
+2. release recipe 指纹与请求的 profile 集合兼容。
+3. 被复用阶段的产物仍存在；已 publish 镜像必须能在 registry 验证到记录的 digest。
+4. 不从一个 profile 的完成状态推断其他 profile 已完成。
+5. deploy 外部输入按本次 invocation 重新解析；若相较失败 run 有变化，计划中显示差异，不把旧 env 静默带入。
+
+任何候选歧义、digest 缺失或远端不可验证，都不得自动越过 publish。
+
+#### C.4 失败后的交互
+
+建议失败摘要稳定输出：
+
+```text
+✗ run 7f3a91 failed at deploy
+  release   v0.2.3 @ 4d2c...
+  published registry.example.com/team/app@sha256:09a3...  ✓
+  deploy    failed: ssh timeout
+
+继续本次发布：
+  ship run --resume 7f3a91
+
+只部署已发布产物：
+  ship deploy -v v0.2.3 -y
+```
+
+下一次 resume 的 plan 应明确显示：
+
+```text
+build     reuse
+tag       reuse
+publish   verify + reuse
+deploy    run
+verify    run
+```
+
+这样交互式终端和 CI 都能从文本直接判断“哪些动作不会再次发生”。
+
+#### C.5 checkpoint 最小模型
+
+建议 `.ship/runs/<run_id>/run.json` 至少记录：
+
+- release identity、recipe digest、profiles、ship version。
+- 每个 stage/profile 的 `pending | running | succeeded | failed | skipped`。
+- started/finished time、错误摘要、artifact ref/digest。
+- build/publish 输入指纹与 deploy 外部输入指纹分开记录。
+
+进程启动后遇到遗留 `running` 应转为 `interrupted`，不能误当成功。
+
+**验收：** push 已成功的版本，`ship run --resume RUN_ID` 从 deploy 开始，日志与 Docker CLI 断言均确认未执行 tag/push。
 
 ### D. 与「静默用远端」的边界（产品规则）
 
@@ -145,10 +231,10 @@ buildx `--load` 且带 attestation 时，同一次构建会同时出现：
 
 | Phase | 内容 | 优先级 |
 |-------|------|--------|
-| 0 | 本文档 + quick-start / 失败手册中补充「push 已成功则 ship deploy」 | P0 |
-| 1 | 冲突提示文案（B） | P0 |
-| 2 | 统一 push 等价判定（A）+ 测试 | P0 |
-| 3 | `--from` / `--resume`（C） | P1 |
+| 0 | 本文档 + quick-start 补充「push 已成功则 ship deploy」 | P0 · **done** |
+| 1 | 冲突提示文案（B） | P0 · **done** |
+| 2 | 统一 push 等价判定（A）+ 测试 | P0 · **done** |
+| 3 | run checkpoint + `--resume`（C） | P1 · planned |
 
 ## 与现有文档的关系
 
@@ -163,7 +249,7 @@ buildx `--load` 且带 attestation 时，同一次构建会同时出现：
 | 风险 | 缓解 |
 |------|------|
 | 放宽等价判定导致误跳过 push、旧镜像留在 tag 上 | 单测 + 优先 imagetools pin；不确定则 fail 并提示 deploy/新 tag |
-| `--from deploy` 在无 published artifact 时误用 | `RequireReleaseManifest` + `HasPublishedImage` |
+| `--resume` 在无 published artifact 时误越过 publish | checkpoint 前置条件 + `RequireReleaseManifest` + registry digest 校验 |
 | 用户以为升级 v2.7.1 已包含本修复 | 文档写明范围；release note 分开列 |
 
 ## 完成定义
@@ -175,7 +261,7 @@ buildx `--load` 且带 attestation 时，同一次构建会同时出现：
 
 ## 消费方临时绕过（文档备查）
 
-在 ship 本 change 落地前：
+在尚未升级到含本修复的 ship 版本时：
 
 ```bash
 # 镜像已在 registry 时

@@ -321,9 +321,23 @@ push 前应检查远端版本：
 - 版本存在且 digest 相同：视为幂等成功。
 - 版本存在且 digest 不同：默认拒绝，报告冲突。
 
+“digest 相同”表示能证明是同一 registry 内容身份，而非只比较两个来源不一致的字符串。对于 OCI index / manifest list，应优先比较 registry pin；本地 daemon 只有平台镜像时，可以展开远端 index 成员并比较 config 身份。不能仅凭 layers 相同判为等价，因为 `ENV`、`ENTRYPOINT`、labels 等配置变更可能不产生新 layer。
+
+若网络、权限或旧工具链导致无法证明等价，应保守拒绝覆盖，并同时提示两条安全路径：
+
+- 上次已发布成功：显式执行 `ship deploy -v <version>` 消费远端产物。
+- 本地确有新内容：创建新 Git tag 后重新 `ship run`。
+
 不建议为正式 Git tag 提供普通的 `--force` 覆盖。真正需要修复时，应创建新版本；如果保留管理员逃生口，也必须要求二次确认并留下审计记录。
 
-### 11.2 `latest` 只是显式 promotion alias
+### 11.2 `ship run` 重试与 `ship deploy` 的分工
+
+- `ship run` 表示从发布会话产出 artifact 并推进完整 release；同一内容重试必须幂等。
+- `ship deploy` 表示消费 release manifest 中已经发布的 artifact；不得触发 build、tag 或 push。
+- publish 已成功而 deploy 失败时，当前最短恢复路径是 `ship deploy -v <version>`；未来 `ship run --resume <run-id>` 可在验证 manifest 与 registry digest 后提供同样安全的阶段续跑。
+- 不得因为远端 tag 已存在就让 `ship run` 静默忽略本地新构建；只有身份等价或用户显式选择 deploy/resume 才能复用远端产物。
+
+### 11.3 `latest` 只是显式 promotion alias
 
 发布旧版本时不能把 `latest` 自动指回旧版本。推荐：
 
@@ -332,7 +346,7 @@ push 前应检查远端版本：
 - deploy、rollback 永远不修改 `latest`。
 - matrix/profile 的 `latest-*` 也遵循相同原则。
 
-### 11.3 本地临时镜像 tag
+### 11.4 本地临时镜像 tag
 
 不要用共享的本地 `latest` 作为 build → tag → push 的阶段输入。建议使用包含 run ID 的临时 tag：
 

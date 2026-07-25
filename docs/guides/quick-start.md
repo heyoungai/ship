@@ -52,6 +52,14 @@ go build -o .\ship.exe .
 .\ship.exe run -v v1.0.0 --yes
 ```
 
+如果 `push` 已成功、但后续 deploy / verify 因网络或目标服务器问题失败，修复环境后可直接消费已经发布的产物：
+
+```powershell
+.\ship.exe deploy -v v1.0.0 --yes
+```
+
+再次执行同版本 `run` 也不会覆盖正式 tag：本地与远端内容可证明等价时会跳过 push；内容不同或无法证明一致时会保守拒绝，并提示选择上述 deploy 命令或创建新版本。当前尚未实现阶段 checkpoint / `--resume`，所以只差部署时优先使用 `deploy`，避免重复 build。
+
 ## 3. Docker 项目最小配置
 
 适合前后端、Next.js、Python、Node、Java 等镜像部署项目。
