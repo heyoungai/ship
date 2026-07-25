@@ -12,7 +12,7 @@ import (
 // - 存在且与本地内容等价：视为幂等成功（返回 skip=true）
 // - 存在且内容不同：拒绝覆盖
 func EnsureRegistryTagImmutable(localRef, remoteRef string) (skip bool, err error) {
-	remoteDigest, exists, err := remoteManifestDigest(remoteRef)
+	remoteFingerprint, exists, err := remoteManifestDigest(remoteRef)
 	if err != nil {
 		return false, err
 	}
@@ -20,19 +20,33 @@ func EnsureRegistryTagImmutable(localRef, remoteRef string) (skip bool, err erro
 		return false, nil
 	}
 
-	localDigest, err := localImageDigest(localRef)
+	localFingerprint, err := localImageDigest(localRef)
 	if err != nil {
 		return false, fmt.Errorf("读取本地镜像 digest 失败 (%s): %w", localRef, err)
 	}
 
-	if DigestsMatch(localDigest, remoteDigest) {
-		PrintInfo(fmt.Sprintf("远端已存在相同内容: %s (%s)，跳过 push", remoteRef, shortDigest(remoteDigest)))
+	localIdentities := []string{localFingerprint}
+	if repoDigests, inspectErr := localImageRepoDigests(localRef); inspectErr == nil {
+		localIdentities = append(localIdentities, repoDigests...)
+	}
+
+	remoteIdentities := []string{remoteFingerprint}
+	if pin, ok, inspectErr := registryDigestViaImagetools(remoteRef); inspectErr == nil && ok {
+		remoteIdentities = append(remoteIdentities, pin)
+	}
+	expanded, expansionErrors := expandRemoteIndexFingerprints(remoteRef, remoteFingerprint)
+	remoteIdentities = append(remoteIdentities, expanded...)
+
+	if registryIdentitiesMatch(localIdentities, remoteIdentities) {
+		PrintInfo(fmt.Sprintf("远端已存在相同内容: %s (%s)，跳过 push", remoteRef, shortDigest(preferredRemoteIdentity(remoteIdentities))))
 		return true, nil
 	}
 
-	return false, fmt.Errorf(
-		"拒绝覆盖远端版本 %s：已有 digest %s，本地 digest %s；请发布新版本而不是覆盖正式 tag",
-		remoteRef, shortDigest(remoteDigest), shortDigest(localDigest),
+	return false, immutableTagConflictError(
+		remoteRef,
+		preferredRemoteIdentity(remoteIdentities),
+		localFingerprint,
+		len(expansionErrors) > 0,
 	)
 }
 
@@ -122,6 +136,128 @@ func localImageDigest(ref string) (string, error) {
 		return "", fmt.Errorf("%w", err)
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// localImageRepoDigests 返回本地 daemon 已知的 registry manifest/index digest。
+// 同一镜像曾经 push/pull 成功时，这能把本地的 registry 身份与远端 pin 直接对齐。
+func localImageRepoDigests(ref string) ([]string, error) {
+	cmd := exec.Command(
+		"docker", "image", "inspect", ref,
+		"--format", "{{json .RepoDigests}}",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("%w", err)
+	}
+
+	var repoDigests []string
+	raw := strings.TrimSpace(string(out))
+	if raw == "" || raw == "null" {
+		return nil, nil
+	}
+	if err := json.Unmarshal([]byte(raw), &repoDigests); err != nil {
+		return nil, fmt.Errorf("解析本地 RepoDigests 失败: %w", err)
+	}
+
+	digests := make([]string, 0, len(repoDigests))
+	for _, refWithDigest := range repoDigests {
+		_, digest, ok := strings.Cut(refWithDigest, "@")
+		if ok && IsPinableDigest(digest) {
+			digests = append(digests, digest)
+		}
+	}
+	return digests, nil
+}
+
+// expandRemoteIndexFingerprints 把 index/list 成员继续解析为 config + layers 指纹。
+// buildx --load 后本地 daemon 通常只有平台镜像的 config/layers，而远端正式 tag
+// 可能是包含 provenance attestation 的 OCI index；展开成员后两者才处于同一身份层级。
+func expandRemoteIndexFingerprints(ref, fingerprint string) (fingerprints []string, errs []error) {
+	visited := make(map[string]bool)
+
+	var expand func(string)
+	expand = func(current string) {
+		for _, member := range indexMembers(current) {
+			if visited[member] {
+				continue
+			}
+			visited[member] = true
+
+			child, exists, err := remoteManifestDigest(ref + "@" + member)
+			if err != nil {
+				errs = append(errs, err)
+				continue
+			}
+			if !exists {
+				errs = append(errs, fmt.Errorf("远端 index 成员不存在: %s", member))
+				continue
+			}
+			fingerprints = append(fingerprints, child)
+			if isIndexFingerprint(child) {
+				expand(child)
+			}
+		}
+	}
+
+	expand(fingerprint)
+	return fingerprints, errs
+}
+
+func registryIdentitiesMatch(local, remote []string) bool {
+	for _, localIdentity := range local {
+		for _, remoteIdentity := range remote {
+			if DigestsMatch(localIdentity, remoteIdentity) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func preferredRemoteIdentity(identities []string) string {
+	for _, identity := range identities {
+		if IsPinableDigest(identity) {
+			return identity
+		}
+	}
+	if len(identities) > 0 {
+		return identities[0]
+	}
+	return ""
+}
+
+func immutableTagConflictError(remoteRef, remoteIdentity, localIdentity string, incomplete bool) error {
+	reason := "与本地发布内容不一致"
+	if incomplete {
+		reason = "无法完整解析远端 index，因而无法证明与本地发布内容一致"
+	}
+
+	deployVersion := imageTag(remoteRef)
+	deployCommand := "ship deploy -v <version> -y"
+	if deployVersion != "" {
+		deployCommand = "ship deploy -v " + deployVersion + " -y"
+	}
+
+	return fmt.Errorf(
+		"拒绝覆盖远端正式 tag %s：%s（远端 %s，本地 %s）。\n\n"+
+			"若上次 push 已成功、仅 deploy 失败，且确认远端镜像可用：\n  %s\n\n"+
+			"若本地包含尚未发布的变更：\n  请打新 tag 后重新 ship run（不要覆盖正式 tag）",
+		remoteRef,
+		reason,
+		shortDigest(remoteIdentity),
+		shortDigest(localIdentity),
+		deployCommand,
+	)
+}
+
+func imageTag(ref string) string {
+	ref, _, _ = strings.Cut(strings.TrimSpace(ref), "@")
+	slash := strings.LastIndex(ref, "/")
+	colon := strings.LastIndex(ref, ":")
+	if colon <= slash || colon == len(ref)-1 {
+		return ""
+	}
+	return ref[colon+1:]
 }
 
 func parseManifestDigest(raw []byte) (string, error) {
@@ -319,6 +455,12 @@ func digestsCompatible(local, remote string) bool {
 				return true
 			}
 		}
+	}
+	// 两侧都有 config/manifest 身份时，identity 不同即表示内容不同。
+	// 不能仅凭 layers 相同判为等价：ENV、ENTRYPOINT、labels 等配置变化
+	// 不一定产生新 layer，但仍是必须使用新正式 tag 的镜像变更。
+	if IsPinableDigest(localID) && IsPinableDigest(remoteID) {
+		return false
 	}
 	// Compare layer sets when both encode layers（非 index 聚合）。
 	localLayers := extractLayerDigests(local)

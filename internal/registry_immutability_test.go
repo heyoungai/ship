@@ -1,6 +1,9 @@
 package internal
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -21,6 +24,14 @@ func TestDigestsCompatible_Different(t *testing.T) {
 	}
 }
 
+func TestDigestsCompatible_SameLayersDifferentConfig(t *testing.T) {
+	local := `sha256:aaaaaaaa ["sha256:layer1","sha256:layer2"]`
+	remote := "sha256:bbbbbbbb sha256:layer1,sha256:layer2"
+	if digestsCompatible(local, remote) {
+		t.Fatal("config changes must not be hidden by identical layers")
+	}
+}
+
 func TestDigestsMatch_PinInIndexMembers(t *testing.T) {
 	recorded := "sha256:aaaaaaaa"
 	remote := "index:sha256:bbbbbbbb,sha256:aaaaaaaa"
@@ -29,6 +40,126 @@ func TestDigestsMatch_PinInIndexMembers(t *testing.T) {
 	}
 	if DigestsMatch("sha256:cccccccc", remote) {
 		t.Fatal("expected mismatch")
+	}
+}
+
+func TestRegistryIdentitiesMatch_ListDigestAndMembers(t *testing.T) {
+	local := []string{"sha256:11111111"}
+	remote := []string{
+		"index:sha256:aaaaaaaa,sha256:bbbbbbbb",
+		"sha256:11111111",
+	}
+	if !registryIdentitiesMatch(local, remote) {
+		t.Fatal("expected local list digest to match the resolved remote index digest")
+	}
+}
+
+func TestRegistryIdentitiesMatch_LocalConfigAndExpandedIndexMember(t *testing.T) {
+	local := []string{`sha256:cccccccc ["sha256:l1","sha256:l2"]`}
+	remote := []string{
+		"index:sha256:aaaaaaaa,sha256:bbbbbbbb",
+		"sha256:cccccccc sha256:l1,sha256:l2",
+		"sha256:attest sha256:metadata",
+	}
+	if !registryIdentitiesMatch(local, remote) {
+		t.Fatal("expected local config/layers to match an expanded remote index member")
+	}
+}
+
+func TestRegistryIdentitiesMatch_DifferentContent(t *testing.T) {
+	local := []string{`sha256:cccccccc ["sha256:l1","sha256:l2"]`}
+	remote := []string{
+		"sha256:11111111",
+		"sha256:dddddddd sha256:l1,sha256:other",
+	}
+	if registryIdentitiesMatch(local, remote) {
+		t.Fatal("different image content must not match")
+	}
+}
+
+func TestEnsureRegistryTagImmutable_ExpandsIndexMembers(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake docker executable uses a POSIX shell")
+	}
+
+	binDir := t.TempDir()
+	dockerPath := filepath.Join(binDir, "docker")
+	script := `#!/bin/sh
+if [ "$1" = "manifest" ] && [ "$2" = "inspect" ]; then
+	case "$3" in
+		*"@sha256:aaaaaaaa")
+			printf '%s\n' '{"schemaVersion":2,"config":{"digest":"sha256:cccccccc"},"layers":[{"digest":"sha256:dddddddd"},{"digest":"sha256:eeeeeeee"}]}'
+			exit 0
+			;;
+		*"@sha256:bbbbbbbb")
+			printf '%s\n' '{"schemaVersion":2,"config":{"digest":"sha256:ffffffff"},"layers":[{"digest":"sha256:11111111"}]}'
+			exit 0
+			;;
+		*)
+			printf '%s\n' '{"schemaVersion":2,"manifests":[{"digest":"sha256:aaaaaaaa"},{"digest":"sha256:bbbbbbbb"}]}'
+			exit 0
+			;;
+	esac
+fi
+if [ "$1" = "image" ] && [ "$2" = "inspect" ]; then
+	case "$5" in
+		*"RepoDigests"*) printf '%s\n' '[]' ;;
+		*) printf '%s\n' 'sha256:cccccccc ["sha256:dddddddd","sha256:eeeeeeee"]' ;;
+	esac
+	exit 0
+fi
+if [ "$1" = "buildx" ]; then
+	printf '%s\n' 'buildx unavailable' >&2
+	exit 1
+fi
+exit 2
+`
+	if err := os.WriteFile(dockerPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	skip, err := EnsureRegistryTagImmutable(
+		"registry.example.com/team/app:v0.2.3",
+		"registry.example.com/team/app:v0.2.3",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !skip {
+		t.Fatal("same platform image inside remote index should skip push")
+	}
+}
+
+func TestImmutableTagConflictError_GuidesRetry(t *testing.T) {
+	err := immutableTagConflictError(
+		"registry.example.com:5000/team/app:v0.2.3",
+		"sha256:aaaaaaaa",
+		"sha256:bbbbbbbb",
+		false,
+	)
+	message := err.Error()
+	for _, want := range []string{
+		"与本地发布内容不一致",
+		"ship deploy -v v0.2.3 -y",
+		"请打新 tag 后重新 ship run",
+	} {
+		if !strings.Contains(message, want) {
+			t.Fatalf("conflict error missing %q: %s", want, message)
+		}
+	}
+}
+
+func TestImageTag(t *testing.T) {
+	for ref, want := range map[string]string{
+		"registry.example.com/team/app:v1.2.3":      "v1.2.3",
+		"registry.example.com:5000/app:v2":          "v2",
+		"registry.example.com/app:v3@sha256:abcdef": "v3",
+		"registry.example.com/app":                  "",
+	} {
+		if got := imageTag(ref); got != want {
+			t.Fatalf("imageTag(%q)=%q want %q", ref, got, want)
+		}
 	}
 }
 
