@@ -1,8 +1,9 @@
 # Change Plan · ship AI advisor
 
-- Status: **in progress**（v0 已落地；streaming + 线模式 REPL 美化已落地）
+- Status: **in progress**（v0 已随 **v2.8.0** 交付；后续为可选打磨）
 - Date: 2026-07-23
-- Updated: 2026-07-24
+- Updated: 2026-08-03
+- Shipped: v0 in [v2.8.0](../../releases/v2.8.0.md)
 - Owner: TBD
 
 > 使用说明：[guides/ship-ai.md](../../guides/ship-ai.md)。产品边界：[product-design.md](../../product-design.md) §7。本文保留演进与差距分析。  

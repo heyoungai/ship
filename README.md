@@ -6,7 +6,7 @@ Docker 镜像构建、推送和远程部署 CLI 工具。Go 实现，编译为�
 
 仅支持 **`ship.toml` v2 schema**，支持矩阵构建（多品牌/多变体）。命令层基于 **Cobra**，输出层使用 **PTerm**，交互确认使用 **Huh**。
 
-文档入口：[docs/README.md](docs/README.md)
+文档入口：[docs/README.md](docs/README.md) · 版本说明：[docs/releases/README.md](docs/releases/README.md)
 
 常用指南：
 
@@ -14,6 +14,7 @@ Docker 镜像构建、推送和远程部署 CLI 工具。Go 实现，编译为�
 - 产品设计：[docs/product-design.md](docs/product-design.md)
 - Docker 默认模式：[docs/guides/docker-default-pattern.md](docs/guides/docker-default-pattern.md)
 - 真实版本构建策略：[docs/engineering/git-tag-release-strategy.md](docs/engineering/git-tag-release-strategy.md)
+- ship ai：[docs/guides/ship-ai.md](docs/guides/ship-ai.md)
 
 主路径：
 
@@ -66,6 +67,7 @@ ship --help
 | `deploy` / `rollback` / `history` | 部署、回滚、历史 |
 | `run` | `build → tag → push → deploy` 全流程 |
 | `skill` | 安装/更新 agent skill（`.claude/skills/ship/`） |
+| `ai` | 可选发布顾问（LLM；不替代确定性发版） |
 
 ## 用法
 

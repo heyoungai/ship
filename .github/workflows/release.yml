@@ -57,12 +57,32 @@ jobs:
           cd dist
           sha256sum * > checksums.txt
 
+      - name: Prepare release notes
+        id: notes
+        run: |
+          NOTES="docs/releases/${GITHUB_REF_NAME}.md"
+          OUT="${RUNNER_TEMP}/release-notes.md"
+          if [ -f "$NOTES" ]; then
+            cp "$NOTES" "$OUT"
+            echo "generate=false" >> "$GITHUB_OUTPUT"
+          else
+            {
+              echo "## ${GITHUB_REF_NAME}"
+              echo
+              echo "_No curated notes at \`${NOTES}\`; see commit history below._"
+            } > "$OUT"
+            echo "generate=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Missing ${NOTES}; falling back to GitHub-generated release notes"
+          fi
+          echo "body_path=${OUT}" >> "$GITHUB_OUTPUT"
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/*
-          generate_release_notes: true
+          body_path: ${{ steps.notes.outputs.body_path }}
+          generate_release_notes: ${{ steps.notes.outputs.generate }}
 
   update-scoop:
     needs: release

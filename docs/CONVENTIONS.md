@@ -7,6 +7,7 @@ ship 文档治理的最低约定。调整结构时先读 [documentation-design.m
 - 顶层活文档：`kebab-case.md`（如 `product-design.md`）
 - ADR：`adr-NNNN-short-title.md`，序号递增
 - Change plan：`changes/active/<topic>.md`；完成后移到 `changes/completed/`
+- Release notes：`releases/vX.Y.Z.md`（与 git tag 同名）；发版流程见 [releases/README.md](./releases/README.md)
 
 ## 放哪一层
 
@@ -15,6 +16,7 @@ ship 文档治理的最低约定。调整结构时先读 [documentation-design.m
 | 产品定位、长期边界 | 顶层 `product-design.md` |
 | 使用教程、推荐范式 | `guides/` |
 | 发布语义、工程契约 | `engineering/` |
+| 用户可见版本说明 | `releases/vX.Y.Z.md`（索引见 `releases/README.md`） |
 | 未完成的局部规划 / 机制设计 | `changes/active/` |
 | 已拍板的长期决策 | `adr/` |
 | 调研、草案、远期设想 | `research/` |

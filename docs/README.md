@@ -11,6 +11,7 @@
 | [文档规范](./CONVENTIONS.md) | 文档治理 | 新增、重命名、归档文档 |
 | [使用指南索引](./guides/README.md) | 指南 | 快速上手、Docker 默认模式、ship ai |
 | [工程文档索引](./engineering/README.md) | 工程契约 | 发布语义、git-tag 策略 |
+| [Release Notes](./releases/README.md) | 版本说明 | 发版说明与历史版本摘要 |
 | [Change Plans](./changes/README.md) | 变更规划 | 局部演化与未实现规划 |
 | [ADR 索引](./adr/README.md) | 决策记录 | 已稳定的长期决策 |
 
@@ -21,7 +22,7 @@
 | [ship AI advisor](./changes/active/ship-ai-advisor.md) | in progress | AI 顾问 + [使用指南](./guides/ship-ai.md) |
 | [ship remote environments](./changes/active/ship-remote-environments.md) | planned | 环境名册 + `ship remote` |
 | [deploy sync 与外部输入](./changes/active/deploy-sync-and-external-inputs.md) | planned | InvocationRoot sync；digest 见 v2.7.1 hotfix |
-| [正式 tag 不可变与 run 重试](./changes/active/immutable-tag-retry.md) | in progress | push 幂等与提示已实现；run checkpoint / resume 待实现 |
+| [正式 tag 不可变与 run 重试](./changes/active/immutable-tag-retry.md) | in progress | P0 已随 [v2.8.0](./releases/v2.8.0.md) 交付；run checkpoint / resume 待实现 |
 
 ## ADR
 
@@ -34,6 +35,7 @@
 - 上手发版：`guides/quick-start.md` → 需要时再读 `product-design.md`
 - 改产品边界：`product-design.md`
 - 改发布语义 / digest / git-tag：`engineering/git-tag-release-strategy.md`
+- 写/查版本说明：`releases/README.md` → `releases/vX.Y.Z.md`
 - 局部规划（如 AI）：`changes/README.md` → 对应 active 文档
 - 改文档结构：`documentation-design.md` → `CONVENTIONS.md`
 
@@ -46,6 +48,7 @@ README.md
   ├─ CONVENTIONS.md
   ├─ guides/           # 使用指南
   ├─ engineering/      # 工程契约
+  ├─ releases/         # 版本说明
   ├─ changes/          # 局部变更 / 规划
   └─ adr/              # 已稳定决策
 

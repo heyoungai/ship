@@ -1,7 +1,8 @@
 # Change Plan · 正式 tag 不可变校验与 ship run 重试
 
-- Status: **in progress**（P0 push 幂等与冲突提示已实现；run checkpoint / resume 待实现）
+- Status: **in progress**（P0 已随 **v2.8.0** 交付；run checkpoint / resume 待实现）
 - Date: 2026-07-24
+- Shipped: P0 in [v2.8.0](../../releases/v2.8.0.md)
 - Owner: TBD
 - Related:
   - Deploy 侧 digest pin：[`hotfix-v2.7.1-digest-pin.md`](../completed/hotfix-v2.7.1-digest-pin.md)（已修）

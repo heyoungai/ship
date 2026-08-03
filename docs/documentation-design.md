@@ -19,6 +19,7 @@
 | 顶层 | 产品权威、文档体系自身、导航入口 |
 | `guides/` | 上手与推荐用法 |
 | `engineering/` | 发布语义等工程契约 |
+| `releases/` | 用户可见版本说明（打 tag 前写好，供 GitHub Release） |
 | `changes/` | 局部演化与未实现规划 |
 | `adr/` | 已稳定的长期决策 |
 | `research/` | 背景与草案，非默认规范 |
