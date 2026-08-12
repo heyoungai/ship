@@ -84,71 +84,27 @@ jobs:
           body_path: ${{ steps.notes.outputs.body_path }}
           generate_release_notes: ${{ steps.notes.outputs.generate }}
 
-  update-scoop:
+  # Scoop / Homebrew packages live in external repos and self-sync from GitHub
+  # Releases (schedule + optional immediate notify). See:
+  #   https://github.com/star-plan/scoop
+  #   https://github.com/star-plan/homebrew-tap
+  notify-packaging:
     needs: release
     runs-on: ubuntu-latest
+    # Optional: set PACKAGING_TOKEN (fine-grained PAT with contents:write +
+    # actions:write on star-plan/scoop and star-plan/homebrew-tap) for
+    # near-instant package updates. Without it, those repos sync on cron.
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: master
-
-      - name: Get version
-        id: version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-      - name: Download release assets
+      - name: Notify scoop + homebrew-tap (optional)
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PACKAGING_TOKEN }}
         run: |
-          gh release download ${{ github.ref_name }} --dir release-assets
-          cd release-assets
-          sha256sum *.exe > checksums.txt
-
-      - name: Update scoop manifest
-        run: |
-          VERSION=${{ steps.version.outputs.VERSION }}
-          cd release-assets
-
-          AMD64_HASH=$(grep "ship-windows-amd64.exe" checksums.txt | cut -d' ' -f1)
-          ARM64_HASH=$(grep "ship-windows-arm64.exe" checksums.txt | cut -d' ' -f1)
-
-          cat > ../bucket/ship.json << EOF
-          {
-            "version": "${VERSION}",
-            "architecture": {
-              "64bit": {
-                "url": "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/ship-windows-amd64.exe#/ship.exe",
-                "hash": "${AMD64_HASH}"
-              },
-              "arm64": {
-                "url": "https://github.com/${{ github.repository }}/releases/download/v${VERSION}/ship-windows-arm64.exe#/ship-arm64.exe",
-                "hash": "${ARM64_HASH}"
-              }
-            },
-            "bin": "ship.exe",
-            "checkver": {
-              "github": "https://github.com/${{ github.repository }}"
-            },
-            "autoupdate": {
-              "architecture": {
-                "64bit": {
-                  "url": "https://github.com/${{ github.repository }}/releases/download/v\$version/ship-windows-amd64.exe#/ship.exe"
-                },
-                "arm64": {
-                  "url": "https://github.com/${{ github.repository }}/releases/download/v\$version/ship-windows-arm64.exe#/ship-arm64.exe"
-                }
-              },
-              "hash": {
-                "url": "https://github.com/${{ github.repository }}/releases/download/v\$version/checksums.txt"
-              }
-            }
-          }
-          EOF
-
-      - name: Commit and push
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add bucket/ship.json
-          git commit -m "chore: update scoop manifest to v${{ steps.version.outputs.VERSION }}"
-          git push
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "PACKAGING_TOKEN not set; packaging repos will pick up this release on their next sync."
+            exit 0
+          fi
+          payload='{"event_type":"app-release","client_payload":{"app":"ship","tag":"'"${GITHUB_REF_NAME}"'"}}'
+          echo "Dispatching app-release to star-plan/scoop"
+          gh api repos/star-plan/scoop/dispatches --input - <<<"$payload"
+          echo "Dispatching app-release to star-plan/homebrew-tap"
+          gh api repos/star-plan/homebrew-tap/dispatches --input - <<<"$payload"

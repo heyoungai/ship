@@ -27,11 +27,30 @@ Docker 的 `build → tag → push` 会将 `docker buildx` 产物 `--load` 回�
 
 ### Scoop (Windows) 推荐
 
-```bash
-scoop bucket add ship https://github.com/heyoungai/ship
+Scoop 清单维护在独立 bucket：[star-plan/scoop](https://github.com/star-plan/scoop)（不再写入本仓库）。
+
+```powershell
+scoop bucket add star-plan https://github.com/star-plan/scoop
 scoop install ship
 ship version
 scoop update ship
+```
+
+若你以前添加过本仓库作为 bucket，可迁移：
+
+```powershell
+scoop uninstall ship
+scoop bucket rm ship
+scoop bucket add star-plan https://github.com/star-plan/scoop
+scoop install ship
+```
+
+### Homebrew (macOS / Linux)
+
+```bash
+brew tap star-plan/tap
+brew install ship
+ship version
 ```
 
 ### Go

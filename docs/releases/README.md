@@ -18,7 +18,7 @@
 2. 更新本页索引表。
 3. 把该文件与其它发版前改动一起提交到 `master`。
 4. 打 annotated tag `vX.Y.Z` 并 push；CI 构建产物、创建 GitHub Release，并把本文件用作 Release body。
-5. scoop manifest 由 release workflow 在产物上传后自动更新，**不要**在打 tag 前手写 hash。
+5. Scoop / Homebrew 清单在独立仓库自动同步（[star-plan/scoop](https://github.com/star-plan/scoop)、[star-plan/homebrew-tap](https://github.com/star-plan/homebrew-tap)），**不要**在本仓库手写 hash。若配置了 `PACKAGING_TOKEN`，发版后会立即 dispatch 同步；否则由对方 cron 拉取。
 
 ## 正文写什么
 
