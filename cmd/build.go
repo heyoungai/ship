@@ -195,6 +195,7 @@ func doDockerBuild(cfg *internal.Config, profile internal.Profile, envFile, vers
 		args = append(args, "--no-cache")
 	}
 	args = append(args, internal.BuildxPullArgs(cfg.Build.Docker.Pull)...)
+	args = append(args, internal.BuildxAttestationArgs(cfg.Build.Docker.Provenance, cfg.Build.Docker.Sbom)...)
 	args = append(args, outputArgs...)
 	args = append(args, buildArgs...)
 

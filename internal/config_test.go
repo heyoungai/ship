@@ -474,6 +474,63 @@ func TestBuildxPullArgs(t *testing.T) {
 	}
 }
 
+func TestBuildxAttestationArgs(t *testing.T) {
+	if args := BuildxAttestationArgs(nil, nil); args != nil {
+		t.Fatalf("BuildxAttestationArgs(nil,nil) = %v, want nil", args)
+	}
+	f, tr := false, true
+	got := BuildxAttestationArgs(&f, &f)
+	want := []string{"--provenance=false", "--sbom=false"}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("BuildxAttestationArgs(false,false) = %v, want %v", got, want)
+	}
+	got = BuildxAttestationArgs(&tr, nil)
+	if len(got) != 1 || got[0] != "--provenance=true" {
+		t.Fatalf("BuildxAttestationArgs(true,nil) = %v, want [--provenance=true]", got)
+	}
+}
+
+func TestDockerAttestation_LoadFromToml_False(t *testing.T) {
+	withTempConfigDir(t, map[string]string{
+		"ship.toml": `
+schema = 2
+
+[build]
+driver = "docker"
+
+[build.docker]
+image = "home"
+dockerfile = "./Dockerfile"
+platforms = ["linux/amd64"]
+provenance = false
+sbom = false
+
+[publish]
+driver = "registry"
+
+[[publish.registry.targets]]
+type = "dockerhub"
+namespace = "deali"
+image = "home"
+`,
+	}, func() {
+		cfg, err := LoadConfig("")
+		if err != nil {
+			t.Fatalf("LoadConfig error: %v", err)
+		}
+		if cfg.Build.Docker.Provenance == nil || *cfg.Build.Docker.Provenance {
+			t.Fatal("build.docker.provenance should be false when set in TOML")
+		}
+		if cfg.Build.Docker.Sbom == nil || *cfg.Build.Docker.Sbom {
+			t.Fatal("build.docker.sbom should be false when set in TOML")
+		}
+		args := BuildxAttestationArgs(cfg.Build.Docker.Provenance, cfg.Build.Docker.Sbom)
+		if len(args) != 2 || args[0] != "--provenance=false" || args[1] != "--sbom=false" {
+			t.Fatalf("attestation args = %v", args)
+		}
+	})
+}
+
 func TestShellEscape(t *testing.T) {
 	got := ShellEscape("a'b")
 	want := `'a'"'"'b'`

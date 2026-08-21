@@ -73,6 +73,9 @@ latest_on_default_profile = true
 disable_buildkit = false       # 当前 docker driver 固定使用 buildx，暂不支持 true
 cache_bust = false
 pull = true                    # false 时传 --pull=false：本地已有基础镜像可跳过 registry HEAD，避开 mirror 429
+# 推阿里云 ACR 等仓库时建议关闭：避免 attestation 带 application/vnd.oci.empty.v1+json 导致 push 失败
+# provenance = false
+# sbom = false
 
 # 需要显式写死的 build args 时可使用：
 # [build.docker.build_args]

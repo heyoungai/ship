@@ -77,3 +77,26 @@ func BuildxPullArgs(pull bool) []string {
 	}
 	return []string{"--pull=false"}
 }
+
+// BuildxAttestationArgs 返回 buildx provenance / sbom 相关参数。
+// nil 表示不传，沿用 buildx 默认（新版本常默认开启 provenance attestation）。
+// 显式 false 会传 --provenance=false / --sbom=false，避免生成
+// application/vnd.oci.empty.v1+json 的 attestation，从而兼容阿里云 ACR 等仓库。
+func BuildxAttestationArgs(provenance, sbom *bool) []string {
+	var args []string
+	if provenance != nil {
+		if *provenance {
+			args = append(args, "--provenance=true")
+		} else {
+			args = append(args, "--provenance=false")
+		}
+	}
+	if sbom != nil {
+		if *sbom {
+			args = append(args, "--sbom=true")
+		} else {
+			args = append(args, "--sbom=false")
+		}
+	}
+	return args
+}

@@ -91,6 +91,18 @@ ship build -v v1.0.0 --pull=false -y
 
 Keep default `pull = true` for clean CI agents and floating tags (e.g. `python:3.12`).
 
+### Push to Aliyun ACR (avoid OCI empty attestation)
+
+Newer Docker/buildx may attach provenance that uses `application/vnd.oci.empty.v1+json`. ACR can reject the final manifest with `unknown manifest class`.
+
+```toml
+[build.docker]
+provenance = false
+sbom = false
+```
+
+Rebuild after changing. With `version.source = "git-tag"`, the release tag must include this `ship.toml`.
+
 ## 4. Matrix / single profile
 
 ```toml

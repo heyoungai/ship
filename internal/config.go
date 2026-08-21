@@ -92,6 +92,10 @@ type BuildDockerConfig struct {
 	DisableBuildkit        bool              `toml:"disable_buildkit"`
 	CacheBust              bool              `toml:"cache_bust"`
 	Pull                   bool              `toml:"pull"` // 默认 true；false 时传 --pull=false，跳过基础镜像 registry 校验
+	// Provenance / Sbom 控制 buildx attestation。nil=不传参（buildx 默认）；
+	// false 传 --provenance=false / --sbom=false（推荐推 ACR 等未完整支持 OCI empty config 的仓库）。
+	Provenance *bool `toml:"provenance"`
+	Sbom       *bool `toml:"sbom"`
 }
 
 // BuildGoBinaryConfig 定义 Go 二进制构建细节。
