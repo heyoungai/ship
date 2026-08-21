@@ -131,6 +131,48 @@ exit 2
 	}
 }
 
+func TestRemoteManifestDigest_FallsBackToImagetoolsForOCI(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake docker executable uses a POSIX shell")
+	}
+
+	binDir := t.TempDir()
+	dockerPath := filepath.Join(binDir, "docker")
+	script := `#!/bin/sh
+if [ "$1" = "manifest" ] && [ "$2" = "inspect" ]; then
+	printf '%s\n' 'unsupported manifest format:' >&2
+	exit 1
+fi
+if [ "$1" = "buildx" ] && [ "$2" = "imagetools" ] && [ "$3" = "inspect" ]; then
+	# last arg may be --raw or --format
+	for a in "$@"; do
+		if [ "$a" = "--raw" ]; then
+			printf '%s\n' '{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"digest":"sha256:cccccccc"},"layers":[{"digest":"sha256:dddddddd"}]}'
+			exit 0
+		fi
+	done
+	printf '%s\n' 'sha256:aaaaaaaa'
+	exit 0
+fi
+exit 2
+`
+	if err := os.WriteFile(dockerPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	fp, exists, err := remoteManifestDigest("registry.example.com/team/app:v0.10.5")
+	if err != nil {
+		t.Fatalf("remoteManifestDigest: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected remote OCI tag to exist via imagetools fallback")
+	}
+	if !strings.Contains(fp, "sha256:cccccccc") || !strings.Contains(fp, "sha256:dddddddd") {
+		t.Fatalf("fingerprint = %q, want config+layers from imagetools raw", fp)
+	}
+}
+
 func TestImmutableTagConflictError_GuidesRetry(t *testing.T) {
 	err := immutableTagConflictError(
 		"registry.example.com:5000/team/app:v0.2.3",

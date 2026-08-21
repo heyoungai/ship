@@ -32,7 +32,14 @@ var deployCmd = &cobra.Command{
 		}
 		session.Manifest = manifest
 		if !manifest.HasPublishedImage() && cfg.Build.Driver == "docker" && cfg.Publish.Driver == "registry" {
-			return fmt.Errorf("版本 %s 的 manifest 中没有已发布的 container-image；请先 ship run 或 ship push", ver)
+			return fmt.Errorf(
+				"版本 %s 的本机 release manifest 中没有已发布的 container-image（artifacts 缺少 registry ref）。\n\n"+
+					"说明：ship deploy 只消费本机 .ship 中「push 成功后写入」的发布记录，"+
+					"即使远端 registry 已有同名 tag，只要 push 未成功落盘，deploy 也会拒绝。\n\n"+
+					"请先用修好的 ship 完成 push：\n  ship push -y -v %s\n"+
+					"若 push 因「与远端内容不一致」失败：说明远端 tag 已是另一份内容，应打新版本 tag 后 ship run，或确认要用远端那份再人工补全 .ship/releases/%s.json",
+				ver, ver, ver,
+			)
 		}
 
 		pin, degraded := internal.ResolveComposePin(cfg.Deploy.Compose.Pin, manifest.PrimaryImageDigest())

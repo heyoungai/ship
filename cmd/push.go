@@ -117,7 +117,12 @@ func doRegistryPush(cfg *internal.Config, version string, profile internal.Profi
 			}
 		}
 
-		skip, err := internal.EnsureRegistryTagImmutable(target, target)
+		// localRef 优先用构建产物；已 tag 到 registry 名后 target 也可作为本地引用。
+		identityRef := localRef
+		if identityRef == "" {
+			identityRef = target
+		}
+		skip, err := internal.EnsureRegistryTagImmutable(identityRef, target)
 		if err != nil {
 			return err
 		}

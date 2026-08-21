@@ -105,24 +105,85 @@ func registryDigestViaImagetools(ref string) (digest string, ok bool, err error)
 func remoteManifestDigest(ref string) (digest string, exists bool, err error) {
 	cmd := exec.Command("docker", "manifest", "inspect", ref)
 	out, err := cmd.CombinedOutput()
-	if err != nil {
-		msg := strings.ToLower(string(out) + err.Error())
-		if strings.Contains(msg, "no such") ||
-			strings.Contains(msg, "not found") ||
-			strings.Contains(msg, "manifest unknown") ||
-			strings.Contains(msg, "name unknown") ||
-			strings.Contains(msg, "does not exist") {
-			return "", false, nil
+	if err == nil {
+		digest, err = parseManifestDigest(out)
+		if err != nil {
+			return "", true, err
 		}
-		// 部分环境未登录或网络错误：保守起见返回错误，避免静默覆盖。
-		return "", false, fmt.Errorf("检查远端 manifest 失败 (%s): %s", ref, strings.TrimSpace(string(out)))
+		return digest, true, nil
 	}
 
-	digest, err = parseManifestDigest(out)
-	if err != nil {
-		return "", true, err
+	msg := strings.ToLower(string(out) + err.Error())
+	if remoteManifestNotFound(msg) {
+		return "", false, nil
 	}
-	return digest, true, nil
+
+	// docker manifest inspect 对纯 OCI image manifest
+	//（application/vnd.oci.image.manifest.v1+json，常见于 buildx --provenance=false）
+	// 会报 "unsupported manifest format" 并以非 0 退出。
+	// 此时 tag 实际存在，应回退到 buildx imagetools --raw。
+	if remoteManifestUnsupported(msg) {
+		raw, rawExists, rawErr := imagetoolsRawManifest(ref)
+		if rawErr != nil {
+			return "", false, fmt.Errorf(
+				"检查远端 manifest 失败 (%s): docker manifest inspect 不支持该 OCI 格式，且 imagetools 回退失败: %w",
+				ref, rawErr,
+			)
+		}
+		if !rawExists {
+			return "", false, nil
+		}
+		digest, err = parseManifestDigest(raw)
+		if err != nil {
+			return "", true, err
+		}
+		return digest, true, nil
+	}
+
+	// 部分环境未登录或网络错误：保守起见返回错误，避免静默覆盖。
+	return "", false, fmt.Errorf("检查远端 manifest 失败 (%s): %s", ref, strings.TrimSpace(string(out)))
+}
+
+func remoteManifestNotFound(msg string) bool {
+	return strings.Contains(msg, "no such") ||
+		strings.Contains(msg, "not found") ||
+		strings.Contains(msg, "manifest unknown") ||
+		strings.Contains(msg, "name unknown") ||
+		strings.Contains(msg, "does not exist")
+}
+
+func remoteManifestUnsupported(msg string) bool {
+	return strings.Contains(msg, "unsupported manifest") ||
+		strings.Contains(msg, "media type not supported") ||
+		strings.Contains(msg, "not a valid manifest")
+}
+
+// imagetoolsRawManifest 通过 buildx imagetools 拉取远端 manifest JSON（兼容 OCI）。
+func imagetoolsRawManifest(ref string) (raw []byte, exists bool, err error) {
+	cmd := exec.Command("docker", "buildx", "imagetools", "inspect", ref, "--raw")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.ToLower(string(out) + err.Error())
+		if remoteManifestNotFound(msg) {
+			return nil, false, nil
+		}
+		return nil, false, fmt.Errorf("%s", strings.TrimSpace(string(out)))
+	}
+	// --raw 输出可能夹杂警告；取第一个 JSON 对象。
+	raw = extractJSONObject(out)
+	if len(raw) == 0 {
+		return nil, false, fmt.Errorf("imagetools --raw 未返回 JSON")
+	}
+	return raw, true, nil
+}
+
+func extractJSONObject(b []byte) []byte {
+	s := strings.TrimSpace(string(b))
+	start := strings.IndexAny(s, "{[")
+	if start < 0 {
+		return nil
+	}
+	return []byte(s[start:])
 }
 
 func localImageDigest(ref string) (string, error) {
@@ -240,8 +301,9 @@ func immutableTagConflictError(remoteRef, remoteIdentity, localIdentity string, 
 
 	return fmt.Errorf(
 		"拒绝覆盖远端正式 tag %s：%s（远端 %s，本地 %s）。\n\n"+
-			"若上次 push 已成功、仅 deploy 失败，且确认远端镜像可用：\n  %s\n\n"+
-			"若本地包含尚未发布的变更：\n  请打新 tag 后重新 ship run（不要覆盖正式 tag）",
+			"若上次 push 已成功、且本机 .ship/releases 已有该版本的 registry ref：\n  %s\n"+
+			"（若 deploy 报「manifest 中没有已发布的 container-image」，说明 push 从未成功写入 .ship，不能直接 deploy）\n\n"+
+			"若本地包含尚未发布到该 tag 的变更：\n  请打新 tag 后重新 ship run（不要覆盖正式 tag）",
 		remoteRef,
 		reason,
 		shortDigest(remoteIdentity),
