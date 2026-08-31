@@ -50,6 +50,17 @@ content = "APP_IMAGE_TAG={{ version }}\n"
 
 Built-in template vars: `version`, `module`, `image_name`, `project.*`, `profile.*`, `build.*`, `publish.driver`, `deploy.*`, `verify.driver`. Custom: `vars.<key>`, `env.<key>` (matrix).
 
+## Retry
+
+```toml
+[retry]
+max_attempts = 3            # total attempts; 1 disables retries
+initial_delay_seconds = 2   # exponential backoff
+max_delay_seconds = 20
+```
+
+Applies to transient failures in registry, SCP, SSH, and SSH verify. Build commands, hooks / `steps.*`, local commands, and HTTP verify are not retried by this block; configure HTTP polling with `verify.http.attempts` instead.
+
 ## Build drivers
 
 | Driver | Block |

@@ -91,6 +91,27 @@ ship build -v v1.0.0 --pull=false -y
 
 Keep default `pull = true` for clean CI agents and floating tags (e.g. `python:3.12`).
 
+### Recover a failed release without rebuilding
+
+When a run reports a checkpoint ID after a push/deploy failure, continue only that release:
+
+```bash
+ship run --resume 7f3a91 -y
+```
+
+Normal `ship run -v v1.0.0 -y` also reuses a single matching, digest-verified published run. It will not trust a registry tag that lacks the local checkpoint and manifest. Use `--restart` only to force a fresh full run.
+
+### Retry transient registry or SSH failures
+
+```toml
+[retry]
+max_attempts = 3
+initial_delay_seconds = 2
+max_delay_seconds = 20
+```
+
+This covers built-in registry, SCP, and SSH operations; it intentionally does not rerun hooks or arbitrary local commands.
+
 ### Push to Aliyun ACR (avoid OCI empty attestation)
 
 Newer Docker/buildx may attach provenance that uses `application/vnd.oci.empty.v1+json`. ACR can reject the final manifest with `unknown manifest class`.
