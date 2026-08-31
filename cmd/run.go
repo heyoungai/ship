@@ -14,13 +14,19 @@ var (
 	runProfile       string
 	runSkipDeploy    bool
 	runPromoteLatest bool
+	runResume        string
+	runRestart       bool
 )
 
 var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "执行完整流程: build → tag → push → deploy",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		session, err := prepareReleaseSession(cfg, runVersion, true)
+		versionFlag, err := resolveRunVersionForResume(runVersion, runResume)
+		if err != nil {
+			return err
+		}
+		session, err := prepareReleaseSession(cfg, versionFlag, true)
 		if err != nil {
 			return err
 		}
@@ -45,6 +51,19 @@ var runCmd = &cobra.Command{
 			return err
 		}
 
+		profiles, err := activeCfg.GetProfiles(runProfile)
+		if err != nil {
+			return err
+		}
+		recipeDigest, err := internal.ConfigFingerprint(activeCfg)
+		if err != nil {
+			return err
+		}
+		state, err := prepareRunState(session, activeCfg, profiles, recipeDigest, runResume, runRestart)
+		if err != nil {
+			return err
+		}
+		checkpoint := state.checkpoint
 		plan, err := internal.CompileReleasePlan(activeCfg, session.Identity, session.Roots, internal.PlanOptions{
 			ProfileFilter: runProfile,
 			SkipDeploy:    runSkipDeploy,
@@ -54,11 +73,6 @@ var runCmd = &cobra.Command{
 			return err
 		}
 		internal.PrintReleasePlan(plan)
-
-		profiles, err := activeCfg.GetProfiles(runProfile)
-		if err != nil {
-			return err
-		}
 
 		shouldTag := activeCfg.UsesTagStage()
 		shouldPublish := activeCfg.UsesPublishStage()
@@ -70,17 +84,29 @@ var runCmd = &cobra.Command{
 
 		internal.ProgressStep(currentStep, buildStepTitleFor(activeCfg))
 		for _, p := range profiles {
-			if err := executeBuildProfile(activeCfg, ver, p, envFile, session.RunID(), session); err != nil {
+			if _, err := runStage(session, checkpoint, "build", internal.FormatProfileName(p), func() error {
+				return executeBuildProfile(activeCfg, ver, p, envFile, session.RunID(), session)
+			}); err != nil {
+				printRunFailure(session, checkpoint, err)
 				return err
 			}
 		}
-		_ = session.saveManifest(false)
+		if err := session.saveManifest(false); err != nil {
+			printRunFailure(session, checkpoint, err)
+			return fmt.Errorf("保存 build manifest 失败: %w", err)
+		}
+		if err := saveRunCheckpoint(session, checkpoint); err != nil {
+			return err
+		}
 		currentStep++
 
 		if shouldTag {
 			internal.ProgressStep(currentStep, "打 Tag")
 			for _, p := range profiles {
-				if err := doTag(activeCfg, ver, p, session.RunID()); err != nil {
+				if _, err := runStage(session, checkpoint, "tag", internal.FormatProfileName(p), func() error {
+					return doTag(activeCfg, ver, p, session.RunID())
+				}); err != nil {
+					printRunFailure(session, checkpoint, err)
 					return err
 				}
 			}
@@ -90,12 +116,19 @@ var runCmd = &cobra.Command{
 		if shouldPublish {
 			internal.ProgressStep(currentStep, publishStepTitleFor(activeCfg))
 			for _, p := range profiles {
-				if err := executePublishProfileWithOptions(activeCfg, ver, p, session.RunID(), session, runPromoteLatest); err != nil {
+				if _, err := runStage(session, checkpoint, "publish", internal.FormatProfileName(p), func() error {
+					return executePublishProfileWithOptions(activeCfg, ver, p, session.RunID(), session, runPromoteLatest)
+				}); err != nil {
+					printRunFailure(session, checkpoint, err)
 					return err
 				}
 			}
 			if err := session.saveManifest(true); err != nil {
+				printRunFailure(session, checkpoint, err)
 				return fmt.Errorf("保存 release manifest 失败: %w", err)
+			}
+			if err := saveRunCheckpoint(session, checkpoint); err != nil {
+				return err
 			}
 			internal.PrintInfo(fmt.Sprintf("release indexed: %s", internal.ReleaseIndexPath(session.StateRoot(), ver)))
 			currentStep++
@@ -105,10 +138,18 @@ var runCmd = &cobra.Command{
 
 		deployProfile := selectDeployProfile(activeCfg, profiles)
 		meta := historyMetaFromSession(session)
+		deployRan := false
+		verifyRan := false
 		if shouldDeploy {
 			internal.ProgressStep(currentStep, deployStepTitleFor(activeCfg))
-			if err := executeDeployStage(activeCfg, ver, deployProfile, session); err != nil {
-				return recordDeploymentResult(err, ver, "deploy", "fail", err.Error(), meta)
+			var deployErr error
+			deployRan, deployErr = runStage(session, checkpoint, "deploy", "", func() error {
+				return executeDeployStage(activeCfg, ver, deployProfile, session)
+			})
+			if deployErr != nil {
+				resultErr := recordDeploymentResult(deployErr, ver, "deploy", "fail", deployErr.Error(), meta)
+				printRunFailure(session, checkpoint, resultErr)
+				return resultErr
 			}
 			currentStep++
 		} else if runSkipDeploy {
@@ -117,12 +158,18 @@ var runCmd = &cobra.Command{
 
 		if shouldVerify {
 			internal.ProgressStep(currentStep, verifyStepTitleFor(activeCfg))
-			if err := internal.ExecuteVerify(activeCfg, deployProfile, ver); err != nil {
-				return recordDeploymentResult(err, ver, "deploy", "fail", err.Error(), meta)
+			var verifyErr error
+			verifyRan, verifyErr = runStage(session, checkpoint, "verify", "", func() error {
+				return internal.ExecuteVerify(activeCfg, deployProfile, ver)
+			})
+			if verifyErr != nil {
+				resultErr := recordDeploymentResult(verifyErr, ver, "deploy", "fail", verifyErr.Error(), meta)
+				printRunFailure(session, checkpoint, resultErr)
+				return resultErr
 			}
 		}
 
-		if shouldDeploy {
+		if shouldDeploy && (deployRan || verifyRan) {
 			if err := recordDeploymentResult(nil, ver, "deploy", "success", "", meta); err != nil {
 				return err
 			}
@@ -139,6 +186,8 @@ func init() {
 	runCmd.Flags().StringVarP(&runProfile, "profile", "p", "", "指定 profile 名称 (默认全部)")
 	runCmd.Flags().BoolVar(&runSkipDeploy, "skip-deploy", false, "跳过远程部署步骤")
 	runCmd.Flags().BoolVar(&runPromoteLatest, "promote-latest", false, "显式将 default profile 推送到 :latest")
+	runCmd.Flags().StringVar(&runResume, "resume", "", "从指定失败 run ID 的首个未完成阶段继续")
+	runCmd.Flags().BoolVar(&runRestart, "restart", false, "禁用已验证 run 的自动复用，强制从头开始")
 	registerDockerPullFlag(runCmd)
 }
 

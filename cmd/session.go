@@ -104,6 +104,18 @@ func (s *releaseSession) RunID() string {
 	return s.Roots.RunID
 }
 
+// setRunID 仅供 run resume / reuse 复用已持久化会话；SourceSnapshot 的 worktree
+// 仍是本次临时目录，StateRoot 和本地 build tag 则稳定地指向原 run。
+func (s *releaseSession) setRunID(runID string) {
+	if s == nil || strings.TrimSpace(runID) == "" {
+		return
+	}
+	s.Roots.RunID = runID
+	if s.Snapshot != nil {
+		s.Snapshot.Roots.RunID = runID
+	}
+}
+
 func (s *releaseSession) InvocationRoot() string {
 	return s.Roots.InvocationRoot
 }
