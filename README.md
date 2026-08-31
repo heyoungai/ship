@@ -104,6 +104,8 @@ ship deploy -v v2.0.0
 ship run -v v2.0.0 -y
 ship run -v v2.0.0 --env-file ./.env.local --skip-deploy
 ship run -p brand-a
+# 从失败的 run 恢复
+ship run --resume 7f3a91
 
 ship plan -v v2.0.0
 ship plan -v v2.0.0 --json
@@ -118,7 +120,8 @@ ship history -n 5
 ### 发布语义（默认 `version.source = "git-tag"`）
 
 - `-v` / `SHIP_VERSION` 必须是本地真实 Git tag；构建来自该 tag 的源码快照，不切换你当前分支，也不带上未提交修改。
-- `ship plan` / `ship doctor` 可先预览计划与检查条件；`ship run` / `ship build` 会写入 `.ship/runs/`，成功发布后索引到 `.ship/releases/`。
+- `ship plan` / `ship doctor` 可先预览计划与检查条件；`ship run` / `ship build` 会写入 `.ship/runs/`，成功发布后索引到 `.ship/releases/`。`run` 会为每个阶段写 checkpoint：同一源码、配置、profile 且 registry digest 仍可验证的已发布版本会复用 build/tag/publish；失败后用 `ship run --resume <run-id>` 继续。用 `--restart` 可强制从头执行。
+- 内置 registry、SCP、SSH 与 SSH verify 操作由 `[retry]` 控制；默认最多 3 次、2s 起始指数退避、20s 封顶。HTTP verify 仍使用自己的 `attempts`。
 - 独立 `push` / `deploy` / `rollback` 按 release manifest 消费产物；尚未发布过的版本会失败。
 - 默认按 digest 钉部署（写入 `APP_IMAGE_DIGEST`，同时保留版本别名）。生产 compose **必须**用 `@digest`，推荐：
 

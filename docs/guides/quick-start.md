@@ -58,7 +58,17 @@ go build -o .\ship.exe .
 .\ship.exe deploy -v v1.0.0 --yes
 ```
 
-再次执行同版本 `run` 也不会覆盖正式 tag：本地与远端内容可证明等价时会跳过 push；内容不同或无法证明一致时会保守拒绝，并提示选择上述 deploy 命令或创建新版本。当前尚未实现阶段 checkpoint / `--resume`，所以只差部署时优先使用 `deploy`，避免重复 build。
+再次执行同版本 `run` 时，ship 会寻找唯一一条源码、有效配置和 profile 都匹配，并且 registry digest 仍可验证的已发布 run；找到后会显示复用计划并跳过 build/tag/publish，只执行尚未完成的 deploy/verify。仅 registry 有同名 tag、但本机缺少可信 checkpoint 与 manifest 时不会复用。
+
+若某次 run 失败，终端会输出 run ID；修复网络或服务器后可精确恢复：
+
+```bash
+ship run --resume <run-id>
+```
+
+`--resume` 会重新验证已发布镜像，无法证明一致时拒绝跳过 publish。`--restart` 可禁用自动复用并强制完整重跑；只部署已发布产物仍可使用 `ship deploy -v <version> -y`。
+
+内置 registry、SCP、SSH 与 SSH verify 默认最多重试 3 次，等待按 2s、4s 指数增长并在 20s 封顶；可在 `ship.toml` 的 `[retry]` 调整，设 `max_attempts = 1` 可关闭。
 
 ## 3. Docker 项目最小配置
 

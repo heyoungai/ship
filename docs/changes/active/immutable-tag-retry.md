@@ -1,6 +1,6 @@
 # Change Plan · 正式 tag 不可变校验与 ship run 重试
 
-- Status: **in progress**（P0 已随 **v2.8.0** 交付；run checkpoint / resume 待实现）
+- Status: **implemented, unreleased**（P0 已随 **v2.8.0** 交付；checkpoint / resume 已实现）
 - Date: 2026-07-24
 - Shipped: P0 in [v2.8.0](../../releases/v2.8.0.md)
 - Owner: TBD
@@ -94,10 +94,10 @@ buildx `--load` 且带 attestation 时，同一次构建会同时出现：
 5. 冲突错误区分“内容不一致”和“远端 index 无法完整解析”，并同时给出 `ship deploy -v VER -y` 与打新 tag 两条路径。
 6. 回归测试覆盖 registry pin / index 成员 / config 指纹组合、真实冲突、相同 layers 不同 config，以及模拟 Docker CLI 的 attestation index 重试。
 
-待完成：
+已完成：
 
-- run 阶段 checkpoint、失败摘要与显式 resume。
-- 基于 checkpoint 的安全自动续跑；在此之前，相同命令会重新 build，但 publish 已可幂等跳过。
+- run 阶段 checkpoint、失败摘要与显式 `--resume <run-id>`。
+- 基于 checkpoint 的安全自动续跑：唯一且可验证的已发布 run 会跳过 build/tag/publish。
 
 ## 非目标
 
@@ -158,9 +158,8 @@ release manifest 与 run checkpoint 分工不同：
 
 | 命令 | 语义 |
 |------|------|
-| `ship run -v VER` | 正常入口；当前先依靠 publish 幂等，未来自动发现唯一兼容的失败 run 并展示复用计划 |
+| `ship run -v VER` | 正常入口；自动发现唯一兼容且可验证的已发布 run，并展示复用计划 |
 | `ship run --resume RUN_ID` | 从指定 run 的首个未完成阶段继续；执行前重新验证身份与产物 |
-| `ship run --resume` | 仅在能找到唯一兼容失败 run 时使用；有多个候选则列出并拒绝猜测 |
 | `ship deploy -v VER` | 明确消费已发布 artifact，仅部署；仍是“上次 push 成功、只差 deploy”的最短命令 |
 | `ship run -v VER --restart` | 显式开始全新 run；不会覆盖不同内容的正式 tag |
 
@@ -235,7 +234,7 @@ verify    run
 | 0 | 本文档 + quick-start 补充「push 已成功则 ship deploy」 | P0 · **done** |
 | 1 | 冲突提示文案（B） | P0 · **done** |
 | 2 | 统一 push 等价判定（A）+ 测试 | P0 · **done** |
-| 3 | run checkpoint + `--resume`（C） | P1 · planned |
+| 3 | run checkpoint + `--resume <run-id>`（C） | P1 · implemented, unreleased |
 
 ## 与现有文档的关系
 

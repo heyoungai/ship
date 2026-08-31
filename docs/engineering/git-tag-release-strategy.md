@@ -334,7 +334,7 @@ push 前应检查远端版本：
 
 - `ship run` 表示从发布会话产出 artifact 并推进完整 release；同一内容重试必须幂等。
 - `ship deploy` 表示消费 release manifest 中已经发布的 artifact；不得触发 build、tag 或 push。
-- publish 已成功而 deploy 失败时，当前最短恢复路径是 `ship deploy -v <version>`；未来 `ship run --resume <run-id>` 可在验证 manifest 与 registry digest 后提供同样安全的阶段续跑。
+- publish 已成功而 deploy 失败时，`ship deploy -v <version>` 仍是只部署的最短路径；`ship run --resume <run-id>` 会在验证 manifest 与 registry digest 后从首个未完成阶段续跑。
 - 不得因为远端 tag 已存在就让 `ship run` 静默忽略本地新构建；只有身份等价或用户显式选择 deploy/resume 才能复用远端产物。
 
 ### 11.3 `latest` 只是显式 promotion alias
