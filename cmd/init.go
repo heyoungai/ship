@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/heyoungai/ship/internal"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"github.com/heyoungai/ship/internal"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -243,6 +243,11 @@ func generateConfig(info map[string]string) string {
 	b.WriteString("namespace = \"deali\"                        # 改为你的命名空间\n")
 	b.WriteString(fmt.Sprintf("image = %q\n", imageName))
 	b.WriteString("\n")
+	b.WriteString("# ── 内置网络操作重试 ────────────────────────────────────────\n")
+	b.WriteString("[retry]\n")
+	b.WriteString("max_attempts = 3            # 包含首次执行；设为 1 可关闭重试\n")
+	b.WriteString("initial_delay_seconds = 2   # 等待按指数增长：2s, 4s, ...\n")
+	b.WriteString("max_delay_seconds = 20\n\n")
 
 	b.WriteString("# ── 远程部署 ────────────────────────────────────────────────\n")
 	b.WriteString("[deploy]\n")

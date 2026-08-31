@@ -28,6 +28,12 @@ deploy = true
 rollback = true
 verify = true
 
+# ── 内置网络操作重试 ──────────────────────────────────────────────
+[retry]
+max_attempts = 3            # 包含首次执行；设为 1 可关闭重试
+initial_delay_seconds = 2   # 等待按指数增长：2s, 4s, ...
+max_delay_seconds = 20
+
 # ── 配置加载行为 ──────────────────────────────────────────────────
 # unknown_keys 控制 ship.toml 出现未识别字段时的行为：
 #   error  - 直接失败（默认）

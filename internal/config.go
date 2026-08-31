@@ -47,6 +47,13 @@ type FeatureConfig struct {
 	Verify   bool `toml:"verify"`
 }
 
+// RetryConfig 定义内置网络操作的重试策略。MaxAttempts 包含首次执行。
+type RetryConfig struct {
+	MaxAttempts         int `toml:"max_attempts"`
+	InitialDelaySeconds int `toml:"initial_delay_seconds"`
+	MaxDelaySeconds     int `toml:"max_delay_seconds"`
+}
+
 // Step 定义 prepare / pre_deploy 等可选步骤。
 type Step struct {
 	Name     string            `toml:"name"`
@@ -164,9 +171,9 @@ type DeployComposeConfig struct {
 	EnvFile      string `toml:"env_file"`
 	AutoEnvFile  bool   `toml:"auto_env_file"` // 当 env_file 非默认值时自动注入 --env-file 到 up 命令
 	TagKey       string `toml:"tag_key"`
-	Pin          string `toml:"pin"`         // digest | tag；默认 digest
-	DigestKey    string `toml:"digest_key"`  // 默认 APP_IMAGE_DIGEST
-	ImageKey     string `toml:"image_key"`   // 可选：写入完整 repo@sha256:...
+	Pin          string `toml:"pin"`        // digest | tag；默认 digest
+	DigestKey    string `toml:"digest_key"` // 默认 APP_IMAGE_DIGEST
+	ImageKey     string `toml:"image_key"`  // 可选：写入完整 repo@sha256:...
 	Up           string `toml:"up"`
 }
 
@@ -239,6 +246,7 @@ type Config struct {
 	Project   ProjectConfig     `toml:"project"`
 	Version   VersionConfig     `toml:"version"`
 	Features  FeatureConfig     `toml:"features"`
+	Retry     RetryConfig       `toml:"retry"`
 	Vars      map[string]string `toml:"vars"`
 	Steps     StepsConfig       `toml:"steps"`
 	Templates []TemplateSpec    `toml:"templates"`
@@ -267,6 +275,10 @@ func (c *Config) applyDefaults() {
 	c.Features.Deploy = true
 	c.Features.Rollback = true
 	c.Features.Verify = true
+
+	c.Retry.MaxAttempts = 3
+	c.Retry.InitialDelaySeconds = 2
+	c.Retry.MaxDelaySeconds = 20
 
 	c.Build.Driver = "docker"
 	c.Build.Docker.Context = "."

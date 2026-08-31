@@ -1,12 +1,30 @@
 package internal
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
 )
+
+// CommandError 保留外部命令的退出错误与最近输出，供网络重试识别暂态错误。
+// Error 保持简短，避免调用方把已实时打印的日志再输出一遍。
+type CommandError struct {
+	Err    error
+	Output string
+}
+
+func (e *CommandError) Error() string {
+	if e == nil || e.Err == nil {
+		return "command failed"
+	}
+	return e.Err.Error()
+}
+
+func (e *CommandError) Unwrap() error { return e.Err }
 
 // RunCmd 执行外部命令，实时输出 stdout/stderr，失败时返回错误。
 func RunCmd(args []string, label string) error {
@@ -29,8 +47,9 @@ func runCmd(args []string, label, cwd string, env map[string]string) error {
 
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Env = os.Environ()
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	var output tailBuffer
+	cmd.Stdout = io.MultiWriter(os.Stdout, &output)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &output)
 	if cwd != "" {
 		cmd.Dir = cwd
 	}
@@ -40,12 +59,36 @@ func runCmd(args []string, label, cwd string, env map[string]string) error {
 
 	if err := cmd.Run(); err != nil {
 		fmt.Printf("  %s %s  %v\n", ErrorStyle.Render("✖"), label, err)
-		return err
+		return &CommandError{Err: err, Output: output.String()}
 	}
 
 	fmt.Printf("  %s %s\n", SuccessStyle.Render("✔"), label)
 	return nil
 }
+
+// tailBuffer 有界地保存最近命令输出，避免 Docker 构建等大日志无限占用内存。
+type tailBuffer struct {
+	buf bytes.Buffer
+}
+
+const maxCommandOutputForError = 32 * 1024
+
+func (b *tailBuffer) Write(p []byte) (int, error) {
+	if len(p) >= maxCommandOutputForError {
+		b.buf.Reset()
+		_, _ = b.buf.Write(p[len(p)-maxCommandOutputForError:])
+		return len(p), nil
+	}
+	if overflow := b.buf.Len() + len(p) - maxCommandOutputForError; overflow > 0 {
+		remaining := append([]byte(nil), b.buf.Bytes()[overflow:]...)
+		b.buf.Reset()
+		_, _ = b.buf.Write(remaining)
+	}
+	_, _ = b.buf.Write(p)
+	return len(p), nil
+}
+
+func (b *tailBuffer) String() string { return b.buf.String() }
 
 // GetLatestTag 获取最新的 git tag
 func GetLatestTag() (string, error) {

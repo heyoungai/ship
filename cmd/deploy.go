@@ -52,7 +52,7 @@ var deployCmd = &cobra.Command{
 				internal.PrintWarning(reason)
 			}
 		}
-		if err := verifyManifestDigests(manifest, pin == "digest"); err != nil {
+		if err := verifyManifestDigests(cfg.Retry, manifest, pin == "digest"); err != nil {
 			return err
 		}
 		if digest := manifest.PrimaryImageDigest(); digest != "" {
@@ -163,13 +163,13 @@ func doComposeDeploy(cfg *internal.Config, version string, profile internal.Prof
 	deployPath = strings.TrimRight(deployPath, "/")
 	remoteEnvFile := composeRemotePath(deployPath, envFile)
 	remoteComposeFile := composeRemoteFilePath(deployPath, remoteFile, localFile)
-	if err := ensureRemoteComposePaths(host, deployPath, remoteEnvFile, remoteComposeFile); err != nil {
+	if err := ensureRemoteComposePaths(cfg.Retry, host, deployPath, remoteEnvFile, remoteComposeFile); err != nil {
 		return err
 	}
-	if err := uploadComposeArtifact(host, localFile, remoteComposeFile, "compose file"); err != nil {
+	if err := uploadComposeArtifact(cfg.Retry, host, localFile, remoteComposeFile, "compose file"); err != nil {
 		return err
 	}
-	if err := uploadComposeArtifact(host, localEnvFile, remoteEnvFile, ".env file"); err != nil {
+	if err := uploadComposeArtifact(cfg.Retry, host, localEnvFile, remoteEnvFile, ".env file"); err != nil {
 		return err
 	}
 
@@ -178,13 +178,13 @@ func doComposeDeploy(cfg *internal.Config, version string, profile internal.Prof
 		return err
 	}
 	internal.PrintInfo(fmt.Sprintf("compose deploy: host=%s path=%s env_file=%s compose_file=%s updates=%v", host, deployPath, remoteEnvFile, remoteComposeFile, envUpdates))
-	if err := updateRemoteEnvKeys(host, remoteEnvFile, envUpdates); err != nil {
+	if err := updateRemoteEnvKeys(cfg.Retry, host, remoteEnvFile, envUpdates); err != nil {
 		return err
 	}
 
 	restartCmd := fmt.Sprintf("set -e; cd %s && %s", internal.ShellEscape(deployPath), up)
 	internal.ProgressSub(fmt.Sprintf("ssh %s: docker compose up", host))
-	if err := internal.RunCmd(
+	if err := internal.RunNetworkCmd(cfg.Retry,
 		[]string{"ssh", host, restartCmd},
 		fmt.Sprintf("ssh %s: docker compose up", host),
 	); err != nil {
@@ -265,7 +265,7 @@ func selectImageArtifact(m *internal.ReleaseManifest, profile internal.Profile) 
 }
 
 // updateRemoteEnvKeys 在远端 env 文件中写入/替换多个 KEY=VALUE。
-func updateRemoteEnvKeys(host, remoteEnvFile string, updates map[string]string) error {
+func updateRemoteEnvKeys(retry internal.RetryConfig, host, remoteEnvFile string, updates map[string]string) error {
 	if len(updates) == 0 {
 		return nil
 	}
@@ -303,7 +303,7 @@ func updateRemoteEnvKeys(host, remoteEnvFile string, updates map[string]string) 
 	b.WriteString("mv \"$tmp_file\" \"$env_file\"")
 
 	internal.ProgressSub(fmt.Sprintf("ssh %s: 更新 .env (%s)", host, strings.Join(keys, ",")))
-	if err := internal.RunCmd(
+	if err := internal.RunNetworkCmd(retry,
 		[]string{"ssh", host, b.String()},
 		fmt.Sprintf("ssh %s: 更新 .env", host),
 	); err != nil {
@@ -312,7 +312,7 @@ func updateRemoteEnvKeys(host, remoteEnvFile string, updates map[string]string) 
 	return nil
 }
 
-func verifyManifestDigests(manifest *internal.ReleaseManifest, hardFail bool) error {
+func verifyManifestDigests(retry internal.RetryConfig, manifest *internal.ReleaseManifest, hardFail bool) error {
 	if manifest == nil {
 		return nil
 	}
@@ -320,7 +320,13 @@ func verifyManifestDigests(manifest *internal.ReleaseManifest, hardFail bool) er
 		if a.Type != internal.ArtifactTypeImage || a.Ref == "" || a.Digest == "" {
 			continue
 		}
-		remotePin, exists, err := internal.ResolveRegistryPinDigest(a.Ref)
+		var remotePin string
+		var exists bool
+		err := internal.RetryNetwork(retry, fmt.Sprintf("校验远端 digest %s", a.Ref), func() error {
+			var inspectErr error
+			remotePin, exists, inspectErr = internal.ResolveRegistryPinDigest(a.Ref)
+			return inspectErr
+		})
 		if err != nil {
 			if hardFail {
 				return fmt.Errorf("无法校验远端 digest (%s): %w", a.Ref, err)
@@ -336,7 +342,13 @@ func verifyManifestDigests(manifest *internal.ReleaseManifest, hardFail bool) er
 		}
 		if remotePin == "" {
 			// index 存在但无 pin digest：尝试用 manifest 指纹做成员比对（兼容旧逻辑）。
-			fp, fpExists, fpErr := internal.InspectRemoteDigest(a.Ref)
+			var fp string
+			var fpExists bool
+			fpErr := internal.RetryNetwork(retry, fmt.Sprintf("检查远端 manifest %s", a.Ref), func() error {
+				var inspectErr error
+				fp, fpExists, inspectErr = internal.InspectRemoteDigest(a.Ref)
+				return inspectErr
+			})
 			if fpErr != nil {
 				if hardFail {
 					return fmt.Errorf("无法校验远端 digest (%s): %w", a.Ref, fpErr)
@@ -364,7 +376,14 @@ func verifyManifestDigests(manifest *internal.ReleaseManifest, hardFail bool) er
 			continue
 		}
 		// 再比对完整 manifest 指纹，识别「config digest ∈ index 成员」等兼容情况。
-		if fp, ok, err := internal.InspectRemoteDigest(a.Ref); err == nil && ok && internal.DigestsMatch(a.Digest, fp) {
+		var fingerprint string
+		var fingerprintExists bool
+		fingerprintErr := internal.RetryNetwork(retry, fmt.Sprintf("检查远端 manifest %s", a.Ref), func() error {
+			var inspectErr error
+			fingerprint, fingerprintExists, inspectErr = internal.InspectRemoteDigest(a.Ref)
+			return inspectErr
+		})
+		if fingerprintErr == nil && fingerprintExists && internal.DigestsMatch(a.Digest, fingerprint) {
 			continue
 		}
 		msg := fmt.Sprintf("远端 %s digest 与 manifest 不一致：remote=%s manifest=%s", a.Ref, remotePin, a.Digest)
@@ -532,7 +551,7 @@ func composeRemoteFilePath(deployPath, remoteFile, localFile string) string {
 }
 
 // ensureRemoteComposePaths 创建 compose 部署目录及其上传目标父目录。
-func ensureRemoteComposePaths(host, deployPath, remoteEnvFile, remoteComposeFile string) error {
+func ensureRemoteComposePaths(retry internal.RetryConfig, host, deployPath, remoteEnvFile, remoteComposeFile string) error {
 	dirs := uniqueRemoteDirs(deployPath, remoteEnvFile, remoteComposeFile)
 	args := make([]string, 0, len(dirs))
 	for _, dir := range dirs {
@@ -540,7 +559,7 @@ func ensureRemoteComposePaths(host, deployPath, remoteEnvFile, remoteComposeFile
 	}
 	ensureCmd := fmt.Sprintf("set -e; mkdir -p %s", strings.Join(args, " "))
 	internal.ProgressSub(fmt.Sprintf("ssh %s: 准备 compose 目录", host))
-	if err := internal.RunCmd(
+	if err := internal.RunNetworkCmd(retry,
 		[]string{"ssh", host, ensureCmd},
 		fmt.Sprintf("ssh %s: prepare compose directories", host),
 	); err != nil {
@@ -568,14 +587,14 @@ func uniqueRemoteDirs(deployPath, remoteEnvFile, remoteComposeFile string) []str
 }
 
 // uploadComposeArtifact 在配置存在时把本地文件上传到远端指定位置。
-func uploadComposeArtifact(host, localFile, remoteFile, label string) error {
+func uploadComposeArtifact(retry internal.RetryConfig, host, localFile, remoteFile, label string) error {
 	if strings.TrimSpace(localFile) == "" {
 		return nil
 	}
 	cleanedLocal := filepath.Clean(localFile)
 	remoteTarget := fmt.Sprintf("%s:%s", host, remoteFile)
 	internal.ProgressSub(fmt.Sprintf("scp %s -> %s", cleanedLocal, remoteTarget))
-	if err := internal.RunCmd(
+	if err := internal.RunNetworkCmd(retry,
 		[]string{"scp", cleanedLocal, remoteTarget},
 		fmt.Sprintf("upload %s to %s", label, host),
 	); err != nil {
@@ -636,7 +655,7 @@ func doBinaryInstallDeploy(cfg *internal.Config, profile internal.Profile, versi
 
 	internal.ProgressSub(fmt.Sprintf("ssh %s: 安装二进制", host))
 	internal.PrintInfo(fmt.Sprintf("binary-install deploy: host=%s temp=%s install=%s artifact=%s", host, remoteTempPath, remoteInstallPath, renderedLocal))
-	if err := internal.RunCmd(args, fmt.Sprintf("ssh %s: install binary", host)); err != nil {
+	if err := internal.RunNetworkCmd(cfg.Retry, args, fmt.Sprintf("ssh %s: install binary", host)); err != nil {
 		return fmt.Errorf("binary-install deploy 失败: host=%s remote_temp_path=%s remote_install_path=%s: %w", host, remoteTempPath, remoteInstallPath, err)
 	}
 	return nil
@@ -656,7 +675,7 @@ func doSSHDeploy(cfg *internal.Config, profile internal.Profile, version string)
 	for _, command := range commands {
 		internal.PrintInfo(fmt.Sprintf("ssh deploy: host=%s command=%s", host, command))
 		internal.ProgressSub(fmt.Sprintf("ssh %s", host))
-		if err := internal.RunCmd(
+		if err := internal.RunNetworkCmd(cfg.Retry,
 			[]string{"ssh", host, command},
 			fmt.Sprintf("ssh %s", host),
 		); err != nil {

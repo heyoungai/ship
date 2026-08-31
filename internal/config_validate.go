@@ -211,4 +211,14 @@ func (c *Config) validateRuntimeOptions(missing *[]string) {
 	if pin != "" && pin != "digest" && pin != "tag" {
 		*missing = append(*missing, "deploy.compose.pin 仅支持 digest | tag")
 	}
+
+	if c.Retry.MaxAttempts < 1 {
+		*missing = append(*missing, "retry.max_attempts 必须大于等于 1")
+	}
+	if c.Retry.InitialDelaySeconds < 0 {
+		*missing = append(*missing, "retry.initial_delay_seconds 必须大于等于 0")
+	}
+	if c.Retry.MaxDelaySeconds < c.Retry.InitialDelaySeconds {
+		*missing = append(*missing, "retry.max_delay_seconds 必须大于等于 retry.initial_delay_seconds")
+	}
 }

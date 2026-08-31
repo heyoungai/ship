@@ -296,7 +296,7 @@ func ExecuteVerify(cfg *Config, profile Profile, version string) error {
 		}
 		PrintInfo(fmt.Sprintf("verify ssh: host=%s command=%s", host, command))
 		ProgressSub(fmt.Sprintf("verify ssh %s", host))
-		if err := RunCmd([]string{"ssh", host, command}, fmt.Sprintf("verify ssh %s", host)); err != nil {
+		if err := RunNetworkCmd(cfg.Retry, []string{"ssh", host, command}, fmt.Sprintf("verify ssh %s", host)); err != nil {
 			return fmt.Errorf("verify.ssh 失败: host=%s command=%s: %w", host, command, err)
 		}
 		return nil

@@ -122,12 +122,17 @@ func doRegistryPush(cfg *internal.Config, version string, profile internal.Profi
 		if identityRef == "" {
 			identityRef = target
 		}
-		skip, err := internal.EnsureRegistryTagImmutable(identityRef, target)
+		var skip bool
+		err := internal.RetryNetwork(cfg.Retry, fmt.Sprintf("检查 registry tag %s", target), func() error {
+			var checkErr error
+			skip, checkErr = internal.EnsureRegistryTagImmutable(identityRef, target)
+			return checkErr
+		})
 		if err != nil {
 			return err
 		}
 		if !skip {
-			if err := internal.RunCmd(
+			if err := internal.RunNetworkCmd(cfg.Retry,
 				[]string{"docker", "push", target},
 				target,
 			); err != nil {
@@ -136,14 +141,21 @@ func doRegistryPush(cfg *internal.Config, version string, profile internal.Profi
 		}
 
 		digest := ""
-		if d, exists, err := internal.ResolveRegistryPinDigest(target); err != nil {
+		var resolvedDigest string
+		var digestExists bool
+		resolveErr := internal.RetryNetwork(cfg.Retry, fmt.Sprintf("获取 registry pin digest %s", target), func() error {
+			var inspectErr error
+			resolvedDigest, digestExists, inspectErr = internal.ResolveRegistryPinDigest(target)
+			return inspectErr
+		})
+		if resolveErr != nil {
 			internal.PrintWarning(fmt.Sprintf(
 				"获取 registry pin digest 失败 (%s): %v；manifest 不写入 digest（deploy 将按 tag，避免把本地 config digest 误记为 pin）",
-				target, err,
+				target, resolveErr,
 			))
-		} else if exists && d != "" {
-			digest = d
-		} else if exists {
+		} else if digestExists && resolvedDigest != "" {
+			digest = resolvedDigest
+		} else if digestExists {
 			internal.PrintWarning(fmt.Sprintf(
 				"远端 %s 为 manifest list/index 且无法解析 index digest；manifest 不写入 pin digest（请升级 buildx 或改用 pin=tag）",
 				target,
@@ -175,7 +187,7 @@ func doRegistryPush(cfg *internal.Config, version string, profile internal.Profi
 					"tag → latest",
 				)
 			}
-			if err := internal.RunCmd(
+			if err := internal.RunNetworkCmd(cfg.Retry,
 				[]string{"docker", "push", target},
 				target,
 			); err != nil {
@@ -248,7 +260,7 @@ func doSCPPush(cfg *internal.Config, profile internal.Profile, version string, s
 		remote)
 	internal.ProgressSub(local)
 
-	if err := internal.RunCmd(
+	if err := internal.RunNetworkCmd(cfg.Retry,
 		[]string{"scp", local, remote},
 		fmt.Sprintf("scp%s -> %s", nameLabel, remote),
 	); err != nil {
