@@ -112,13 +112,60 @@ func mergeArtifact(old, neu ArtifactRecord) ArtifactRecord {
 	return old
 }
 
-// PrimaryImageDigest 返回默认/首个 container-image 的 digest。
+// artifactProfileName 把空 profile 规范化为 default，与 Upsert/select 的键一致。
+func artifactProfileName(a ArtifactRecord) string {
+	if strings.TrimSpace(a.Profile) == "" {
+		return "default"
+	}
+	return a.Profile
+}
+
+// SelectImageArtifact 为指定 profile 选出部署用的 container-image。
+// build 会先写入仅有 local_ref 的记录，push 再追加带 registry ref/digest 的记录；
+// 必须优先选可钉扎的已发布产物，而不能返回同 profile 的第一条本地构建记录。
+func (m *ReleaseManifest) SelectImageArtifact(profile Profile) ArtifactRecord {
+	if m == nil {
+		return ArtifactRecord{}
+	}
+	want := FormatProfileName(profile)
+	if want == "" {
+		want = "default"
+	}
+	best := ArtifactRecord{}
+	bestScore := -1
+	for _, a := range m.Artifacts {
+		if a.Type != ArtifactTypeImage {
+			continue
+		}
+		score := 0
+		if artifactProfileName(a) == want {
+			score += 8
+		}
+		if IsPinableDigest(a.Digest) {
+			score += 2
+		}
+		if strings.TrimSpace(a.Ref) != "" {
+			score += 1
+		}
+		if score > bestScore {
+			bestScore = score
+			best = a
+		}
+	}
+	return best
+}
+
+// PrimaryImageDigest 返回默认/首个可钉扎 container-image 的 digest。
 func (m *ReleaseManifest) PrimaryImageDigest() string {
 	if m == nil {
 		return ""
 	}
+	art := m.SelectImageArtifact(Profile{})
+	if IsPinableDigest(art.Digest) {
+		return art.Digest
+	}
 	for _, a := range m.Artifacts {
-		if a.Type == ArtifactTypeImage && strings.TrimSpace(a.Digest) != "" {
+		if a.Type == ArtifactTypeImage && IsPinableDigest(a.Digest) {
 			return a.Digest
 		}
 	}

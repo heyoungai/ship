@@ -8,6 +8,74 @@ import (
 	"github.com/heyoungai/ship/internal"
 )
 
+func TestComposeEnvUpdates_PrefersPublishedDigestOverLocalBuild(t *testing.T) {
+	cfg := &internal.Config{}
+	cfg.Deploy.Compose.TagKey = "APP_IMAGE_TAG"
+	cfg.Deploy.Compose.Pin = "digest"
+	cfg.Deploy.Compose.DigestKey = "APP_IMAGE_DIGEST"
+
+	session := &releaseSession{
+		Manifest: &internal.ReleaseManifest{
+			Artifacts: []internal.ArtifactRecord{
+				{
+					Type:     internal.ArtifactTypeImage,
+					Profile:  "default",
+					Platform: "linux/amd64",
+					LocalRef: "olive-gateway:ship-build-run-default",
+				},
+				{
+					Type:     internal.ArtifactTypeImage,
+					Profile:  "default",
+					Platform: "linux/amd64",
+					Ref:      "sgccr.example.com/ns/olive-gateway:v1.0.0-rc.37-olive.2",
+					LocalRef: "olive-gateway:ship-build-run-default",
+					Digest:   "sha256:8bcffc481b30031e565f64f6c94b0fe8c06aa91cde754280e897df1a4b1ab737",
+				},
+			},
+		},
+	}
+
+	updates, err := composeEnvUpdates(cfg, "v1.0.0-rc.37-olive.2", internal.Profile{Default: true}, session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updates["APP_IMAGE_TAG"] != "v1.0.0-rc.37-olive.2" {
+		t.Fatalf("tag=%q", updates["APP_IMAGE_TAG"])
+	}
+	if updates["APP_IMAGE_DIGEST"] != "sha256:8bcffc481b30031e565f64f6c94b0fe8c06aa91cde754280e897df1a4b1ab737" {
+		t.Fatalf("digest=%q updates=%v", updates["APP_IMAGE_DIGEST"], updates)
+	}
+}
+
+func TestComposeEnvUpdates_ErrorsWhenComposeNeedsDigestButManifestHasNone(t *testing.T) {
+	dir := t.TempDir()
+	composePath := filepath.Join(dir, "compose.yaml")
+	if err := os.WriteFile(composePath, []byte("image: ${APP_IMAGE}@${APP_IMAGE_DIGEST}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &internal.Config{}
+	cfg.Deploy.Compose.TagKey = "APP_IMAGE_TAG"
+	cfg.Deploy.Compose.Pin = "digest"
+	cfg.Deploy.Compose.DigestKey = "APP_IMAGE_DIGEST"
+	cfg.Deploy.Compose.LocalFile = composePath
+
+	session := &releaseSession{
+		Manifest: &internal.ReleaseManifest{
+			Artifacts: []internal.ArtifactRecord{{
+				Type:     internal.ArtifactTypeImage,
+				Profile:  "default",
+				LocalRef: "app:local",
+			}},
+		},
+	}
+
+	_, err := composeEnvUpdates(cfg, "v1", internal.Profile{Default: true}, session)
+	if err == nil {
+		t.Fatal("expected error when compose pins digest but manifest has none")
+	}
+}
+
 func TestComposeEnvUpdates_DigestPin(t *testing.T) {
 	cfg := &internal.Config{}
 	cfg.Deploy.Compose.TagKey = "APP_IMAGE_TAG"

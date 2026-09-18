@@ -53,6 +53,61 @@ func TestFindReleaseManifest_Missing(t *testing.T) {
 	}
 }
 
+func TestSelectImageArtifact_PrefersPublishedDigestOverLocalBuild(t *testing.T) {
+	m := NewReleaseManifest(ReleaseIdentity{Version: "v1"}, "r1", "")
+	m.UpsertArtifact(ArtifactRecord{
+		Type:     ArtifactTypeImage,
+		Profile:  "default",
+		Platform: "linux/amd64",
+		LocalRef: "olive-gateway:ship-build-r1-default",
+	})
+	m.UpsertArtifact(ArtifactRecord{
+		Type:     ArtifactTypeImage,
+		Profile:  "default",
+		Platform: "linux/amd64",
+		Ref:      "sgccr.example.com/ns/olive-gateway:v1",
+		LocalRef: "olive-gateway:ship-build-r1-default",
+		Digest:   "sha256:8bcffc481b30031e565f64f6c94b0fe8c06aa91cde754280e897df1a4b1ab737",
+	})
+
+	got := m.SelectImageArtifact(Profile{})
+	if got.Digest != "sha256:8bcffc481b30031e565f64f6c94b0fe8c06aa91cde754280e897df1a4b1ab737" {
+		t.Fatalf("digest=%q ref=%q", got.Digest, got.Ref)
+	}
+	if got.Ref != "sgccr.example.com/ns/olive-gateway:v1" {
+		t.Fatalf("ref=%q", got.Ref)
+	}
+	if m.PrimaryImageDigest() != got.Digest {
+		t.Fatalf("PrimaryImageDigest=%q", m.PrimaryImageDigest())
+	}
+}
+
+func TestSelectImageArtifact_KeepsMatchingProfile(t *testing.T) {
+	m := NewReleaseManifest(ReleaseIdentity{Version: "v1"}, "r1", "")
+	m.UpsertArtifact(ArtifactRecord{
+		Type:     ArtifactTypeImage,
+		Profile:  "brand-a",
+		LocalRef: "app:local-a",
+	})
+	m.UpsertArtifact(ArtifactRecord{
+		Type:    ArtifactTypeImage,
+		Profile: "brand-a",
+		Ref:     "reg/app:v1-brand-a",
+		Digest:  "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	})
+	m.UpsertArtifact(ArtifactRecord{
+		Type:    ArtifactTypeImage,
+		Profile: "brand-b",
+		Ref:     "reg/app:v1-brand-b",
+		Digest:  "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+	})
+
+	got := m.SelectImageArtifact(Profile{Name: "brand-a"})
+	if got.Ref != "reg/app:v1-brand-a" {
+		t.Fatalf("ref=%q digest=%q", got.Ref, got.Digest)
+	}
+}
+
 func TestUpsertArtifact_MergesDigest(t *testing.T) {
 	m := NewReleaseManifest(ReleaseIdentity{Version: "v1"}, "r1", "")
 	m.UpsertArtifact(ArtifactRecord{

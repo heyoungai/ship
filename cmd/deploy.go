@@ -205,7 +205,7 @@ func composeEnvUpdates(cfg *internal.Config, version string, profile internal.Pr
 	digest := ""
 	imageRef := ""
 	if session != nil && session.Manifest != nil {
-		art := selectImageArtifact(session.Manifest, profile)
+		art := session.Manifest.SelectImageArtifact(profile)
 		digest = art.Digest
 		imageRef = art.Ref
 	}
@@ -220,11 +220,11 @@ func composeEnvUpdates(cfg *internal.Config, version string, profile internal.Pr
 			internal.PrintWarning(reason)
 		}
 	}
+	digestKey := strings.TrimSpace(cfg.Deploy.Compose.DigestKey)
+	if digestKey == "" {
+		digestKey = "APP_IMAGE_DIGEST"
+	}
 	if pin == "digest" {
-		digestKey := strings.TrimSpace(cfg.Deploy.Compose.DigestKey)
-		if digestKey == "" {
-			digestKey = "APP_IMAGE_DIGEST"
-		}
 		updates[digestKey] = digest
 		if imageKey := strings.TrimSpace(cfg.Deploy.Compose.ImageKey); imageKey != "" {
 			full := internal.ImageDigestRef(imageRef, digest)
@@ -233,35 +233,25 @@ func composeEnvUpdates(cfg *internal.Config, version string, profile internal.Pr
 			}
 			updates[imageKey] = full
 		}
+	} else if degraded && composeUsesDigestPin(cfg, session, digestKey) {
+		return nil, fmt.Errorf(
+			"manifest 无可用 registry pin digest，但 compose 使用 @${%s}；降级为 tag 会生成非法镜像引用（repo@）。请重新 ship push 写入 digest，或把 compose 改为 :${%s} 并设 pin=\"tag\"",
+			digestKey, strings.TrimSpace(cfg.Deploy.Compose.TagKey),
+		)
 	}
 	return updates, nil
 }
 
-func selectImageArtifact(m *internal.ReleaseManifest, profile internal.Profile) internal.ArtifactRecord {
-	if m == nil {
-		return internal.ArtifactRecord{}
+func composeUsesDigestPin(cfg *internal.Config, session *releaseSession, digestKey string) bool {
+	if cfg == nil {
+		return false
 	}
-	want := internal.FormatProfileName(profile)
-	if want == "" {
-		want = "default"
+	localFile := strings.TrimSpace(cfg.Deploy.Compose.LocalFile)
+	if localFile == "" || strings.Contains(localFile, "{{") {
+		return false
 	}
-	var fallback internal.ArtifactRecord
-	for _, a := range m.Artifacts {
-		if a.Type != internal.ArtifactTypeImage {
-			continue
-		}
-		ap := a.Profile
-		if ap == "" {
-			ap = "default"
-		}
-		if fallback.Ref == "" {
-			fallback = a
-		}
-		if ap == want {
-			return a
-		}
-	}
-	return fallback
+	uses, checked := composeFileUsesDigestPin(resolveComposeCheckPath(session, localFile), digestKey)
+	return checked && uses
 }
 
 // updateRemoteEnvKeys 在远端 env 文件中写入/替换多个 KEY=VALUE。
