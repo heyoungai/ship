@@ -205,6 +205,123 @@ func TestImageTag(t *testing.T) {
 	}
 }
 
+func TestDigestFromImagetoolsTextAndJSON(t *testing.T) {
+	text := "Name:      registry.example.com/ns/app:v1\nMediaType: application/vnd.oci.image.manifest.v1+json\nDigest:    sha256:df4b7ae191416f85d5d64f56c4b07c2e688e8a8141522348687a167604f4532d\n"
+	if got := digestFromImagetoolsText(text); got != "sha256:df4b7ae191416f85d5d64f56c4b07c2e688e8a8141522348687a167604f4532d" {
+		t.Fatalf("text digest=%q", got)
+	}
+
+	raw := []byte(`{"name":"registry.example.com/ns/app:v1","manifest":{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:df4b7ae191416f85d5d64f56c4b07c2e688e8a8141522348687a167604f4532d"}}`)
+	if got := digestFromImagetoolsJSON(raw); got != "sha256:df4b7ae191416f85d5d64f56c4b07c2e688e8a8141522348687a167604f4532d" {
+		t.Fatalf("json digest=%q", got)
+	}
+}
+
+func TestResolveRegistryPinDigest_UsesManifestDigestNotConfig(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake docker executable uses a POSIX shell")
+	}
+
+	binDir := t.TempDir()
+	dockerPath := filepath.Join(binDir, "docker")
+	script := `#!/bin/sh
+if [ "$1" = "buildx" ] && [ "$2" = "imagetools" ] && [ "$3" = "inspect" ]; then
+	has_format=0
+	has_raw=0
+	format=""
+	prev=""
+	for a in "$@"; do
+		if [ "$a" = "--raw" ]; then
+			has_raw=1
+		fi
+		if [ "$prev" = "--format" ]; then
+			has_format=1
+			format="$a"
+		fi
+		prev="$a"
+	done
+	if [ "$has_raw" = 1 ]; then
+		printf '%s\n' '{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"digest":"sha256:8bcffc481b30031e565f64f6c94b0fe8c06aa91cde754280e897df1a4b1ab737"},"layers":[{"digest":"sha256:aaaa"}]}'
+		exit 0
+	fi
+	if [ "$has_format" = 1 ]; then
+		if [ "$format" = "{{.Digest}}" ]; then
+			printf '%s\n' 'ERROR: template: :1:2: executing "" at <.Digest>: can'"'"'t evaluate field Digest in type imagetools.tplInput' >&2
+			exit 1
+		fi
+		if [ "$format" = "{{.Manifest.Digest}}" ]; then
+			printf '%s\n' 'sha256:df4b7ae191416f85d5d64f56c4b07c2e688e8a8141522348687a167604f4532d'
+			exit 0
+		fi
+		if [ "$format" = "{{json .}}" ]; then
+			printf '%s\n' '{"manifest":{"digest":"sha256:df4b7ae191416f85d5d64f56c4b07c2e688e8a8141522348687a167604f4532d"}}'
+			exit 0
+		fi
+		exit 1
+	fi
+	printf '%s\n' 'Name:      registry.example.com/ns/app:v1'
+	printf '%s\n' 'MediaType: application/vnd.oci.image.manifest.v1+json'
+	printf '%s\n' 'Digest:    sha256:df4b7ae191416f85d5d64f56c4b07c2e688e8a8141522348687a167604f4532d'
+	exit 0
+fi
+if [ "$1" = "manifest" ] && [ "$2" = "inspect" ]; then
+	printf '%s\n' 'unsupported manifest format:' >&2
+	exit 1
+fi
+exit 2
+`
+	if err := os.WriteFile(dockerPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	got, exists, err := ResolveRegistryPinDigest("registry.example.com/ns/app:v1")
+	if err != nil {
+		t.Fatalf("ResolveRegistryPinDigest: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected image to exist")
+	}
+	if got != "sha256:df4b7ae191416f85d5d64f56c4b07c2e688e8a8141522348687a167604f4532d" {
+		t.Fatalf("pin digest=%q, want manifest digest not config digest", got)
+	}
+}
+
+func TestResolveRegistryPinDigest_DoesNotPinConfigFromRawManifest(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fake docker executable uses a POSIX shell")
+	}
+
+	binDir := t.TempDir()
+	dockerPath := filepath.Join(binDir, "docker")
+	script := `#!/bin/sh
+if [ "$1" = "buildx" ]; then
+	printf '%s\n' 'buildx unavailable' >&2
+	exit 1
+fi
+if [ "$1" = "manifest" ] && [ "$2" = "inspect" ]; then
+	printf '%s\n' '{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","config":{"digest":"sha256:8bcffc481b30031e565f64f6c94b0fe8c06aa91cde754280e897df1a4b1ab737","size":1846},"layers":[{"digest":"sha256:aaaa"}]}'
+	exit 0
+fi
+exit 2
+`
+	if err := os.WriteFile(dockerPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	got, exists, err := ResolveRegistryPinDigest("registry.example.com/ns/app:v1")
+	if err != nil {
+		t.Fatalf("ResolveRegistryPinDigest: %v", err)
+	}
+	if !exists {
+		t.Fatal("expected image to exist")
+	}
+	if got != "" {
+		t.Fatalf("config digest must not be used as pin, got %q", got)
+	}
+}
+
 func TestIsPinableDigest(t *testing.T) {
 	if !IsPinableDigest("sha256:abc123") {
 		t.Fatal("expected pinable")

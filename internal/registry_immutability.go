@@ -1,6 +1,9 @@
 package internal
 
 import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -73,29 +76,152 @@ func ResolveRegistryPinDigest(ref string) (digest string, exists bool, err error
 	if !exists {
 		return "", false, nil
 	}
-	if d := PinDigestToken(fp); IsPinableDigest(d) {
-		return d, true, nil
+	// remoteManifestDigest 对单架构 OCI 镜像返回的是 config+layers 指纹，
+	// 其中 config digest 不能用于 repo@digest 拉取（媒体类型是 image config）。
+	// 只有整段指纹本身就是 manifest/index digest 时才能钉扎。
+	if IsPinableDigest(strings.TrimSpace(fp)) {
+		return strings.TrimSpace(fp), true, nil
 	}
 	// manifest list/index：没有 imagetools 时无法得到可 @digest 的 index digest。
-	// 返回 exists=true 且 digest=""，调用方应跳过写入 pin，而不是回退本地 config digest。
+	// 返回 exists=true 且 digest=""，调用方应跳过写入 pin，而不是回退 config digest。
 	return "", true, nil
 }
 
 func registryDigestViaImagetools(ref string) (digest string, ok bool, err error) {
-	cmd := exec.Command("docker", "buildx", "imagetools", "inspect", ref, "--format", "{{.Digest}}")
+	cmd := exec.Command("docker", "buildx", "imagetools", "inspect", ref)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		msg := strings.ToLower(string(out) + err.Error())
-		if strings.Contains(msg, "no such") ||
-			strings.Contains(msg, "not found") ||
-			strings.Contains(msg, "manifest unknown") ||
-			strings.Contains(msg, "name unknown") ||
-			strings.Contains(msg, "does not exist") {
+		if remoteManifestNotFound(msg) {
 			return "", false, nil
 		}
+	} else if d := pinDigestFromImagetoolsInspect(out); IsPinableDigest(d) {
+		return d, true, nil
+	}
+
+	for _, format := range []string{"{{.Digest}}", "{{.Manifest.Digest}}", "{{json .}}"} {
+		d, ok, ferr := imagetoolsInspectFormat(ref, format)
+		if ferr != nil {
+			if remoteManifestNotFound(strings.ToLower(ferr.Error())) {
+				return "", false, nil
+			}
+			if isImagetoolsTemplateError(ferr) {
+				continue
+			}
+			continue
+		}
+		if ok {
+			return d, true, nil
+		}
+	}
+
+	if d, ok, rerr := imagetoolsRawContentDigest(ref); rerr == nil && ok {
+		return d, true, nil
+	}
+	if err != nil {
 		return "", false, fmt.Errorf("imagetools inspect 失败 (%s): %s", ref, strings.TrimSpace(string(out)))
 	}
+	return "", false, nil
+}
+
+func imagetoolsInspectFormat(ref, format string) (digest string, ok bool, err error) {
+	cmd := exec.Command("docker", "buildx", "imagetools", "inspect", ref, "--format", format)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", false, fmt.Errorf("%s", strings.TrimSpace(string(out)))
+	}
+	if format == "{{json .}}" {
+		d := digestFromImagetoolsJSON(out)
+		if !IsPinableDigest(d) {
+			return "", false, nil
+		}
+		return d, true, nil
+	}
 	d := strings.TrimSpace(string(out))
+	if !IsPinableDigest(d) {
+		return "", false, nil
+	}
+	return d, true, nil
+}
+
+func pinDigestFromImagetoolsInspect(out []byte) string {
+	if d := digestFromImagetoolsText(string(out)); IsPinableDigest(d) {
+		return d
+	}
+	if d := digestFromImagetoolsJSON(out); IsPinableDigest(d) {
+		return d
+	}
+	d := strings.TrimSpace(string(out))
+	if IsPinableDigest(d) {
+		return d
+	}
+	return ""
+}
+
+func digestFromImagetoolsText(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		rest, ok := strings.CutPrefix(line, "Digest:")
+		if !ok {
+			continue
+		}
+		d := strings.TrimSpace(rest)
+		if IsPinableDigest(d) {
+			return d
+		}
+	}
+	return ""
+}
+
+func digestFromImagetoolsJSON(raw []byte) string {
+	obj := extractJSONObject(raw)
+	if len(obj) == 0 {
+		return ""
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(obj, &payload); err != nil {
+		return ""
+	}
+	if d, _ := payload["digest"].(string); IsPinableDigest(d) {
+		return d
+	}
+	if m, ok := payload["manifest"].(map[string]any); ok {
+		if d, _ := m["digest"].(string); IsPinableDigest(d) {
+			return d
+		}
+	}
+	return ""
+}
+
+func isImagetoolsTemplateError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "can't evaluate field") ||
+		strings.Contains(msg, "can't index item") ||
+		strings.Contains(msg, `executing "" at`)
+}
+
+func imagetoolsRawContentDigest(ref string) (digest string, ok bool, err error) {
+	cmd := exec.Command("docker", "buildx", "imagetools", "inspect", ref, "--raw")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.ToLower(string(out) + err.Error())
+		if remoteManifestNotFound(msg) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("%s", strings.TrimSpace(string(out)))
+	}
+	raw := bytes.TrimRight(out, "\r\n")
+	if !json.Valid(raw) {
+		raw = extractJSONObject(out)
+	}
+	if len(raw) == 0 || !json.Valid(raw) {
+		return "", false, nil
+	}
+	sum := sha256.Sum256(raw)
+	d := "sha256:" + hex.EncodeToString(sum[:])
 	if !IsPinableDigest(d) {
 		return "", false, nil
 	}
