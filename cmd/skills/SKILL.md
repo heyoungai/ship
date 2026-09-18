@@ -30,11 +30,11 @@ Or step by step: `build` → `tag` → `push` → `deploy`. Prefer `run` for rea
 |---------|---------|-----------|
 | `init` | Generate `ship.toml` | `-f` |
 | `ai` / `ai init` | Thin release advisor (LLM; optional) | `-p`, `--dry-run`, `-y` |
-| `plan` | Show release plan (no side effects) | `-v`, `-p`, `--json` |
-| `doctor` | Check release readiness | `-v`, `-p` |
-| `build` / `tag` / `push` | Build, tag, publish | `-v`, `-p`, `--pull` (build), `--promote-latest` (push) |
+| `plan` | Show release plan (no side effects) | `-v`, `-p`, `--env-file`, `--json`, `--skip-deploy` |
+| `doctor` | Check release readiness | `-v`, `-p`, `--env-file` |
+| `build` / `tag` / `push` | Build, tag, publish | `-v`, `-p`, `--env-file` (build), `--pull` (build), `--promote-latest` (push) |
 | `deploy` / `rollback` / `history` | Deploy / rollback / history | `-v`, `-y`, `-n` |
-| `run` | Full pipeline / safe continuation | `-v`, `-p`, `--pull`, `--skip-deploy`, `--promote-latest`, `--resume <run-id>`, `--restart` |
+| `run` | Full pipeline / safe continuation | `-v`, `-p`, `--env-file`, `--pull`, `--skip-deploy`, `--promote-latest`, `--resume <run-id>`, `--restart` |
 | `current` / `version` / `skill` | Current git tag / ship version / install this skill | `-f` (skill) |
 
 ## Hard rules
@@ -47,7 +47,7 @@ Or step by step: `build` → `tag` → `push` → `deploy`. Prefer `run` for rea
 - Default `build.docker.pull = true`. Local base image already present and registry HEAD / mirror 429 stalls: `ship build|run --pull=false` or `pull = false` in toml. Do **not** default this off on clean CI or floating base tags.
 - `[retry]` controls transient-network retries for registry, SCP, SSH, and SSH verify. Defaults: 3 total attempts, 2s exponential backoff, 20s cap. It does not retry build, hooks, `steps.*`, local commands, or HTTP verify (which uses its own `attempts`).
 - `run` checkpoints stages under `.ship/runs/<run-id>/run.json`. A normal same-version `run` may reuse build/tag/publish only when a single local checkpoint + manifest matches the release identity, effective config, and profiles, and each registry digest still verifies. A remote tag alone is never enough to skip a build.
-- After a failed run, use the printed `ship run --resume <run-id>` to continue its first unfinished stage. Use `--restart` only when a full fresh run is intentional.
+- After a failed run, use the printed `ship run --resume <run-id>` to continue its first unfinished stage. Use `--restart` only when a full fresh run is intentional. If publish already succeeded and only deploy is needed, `ship deploy -v <version> -y` is the shortest path.
 - Unknown keys in `ship.toml` error by default; relax with `[config] unknown_keys = "warn"` or `SHIP_UNKNOWN_KEYS=warn`.
 - `.ship/` is runtime state (runs / releases / history); add it to `.gitignore`.
 - `ship ai` is an optional advisor harness (not a substitute for `plan` / `run` / `deploy`). Prefer `ship ai init --dry-run` before writing config; never ask it to run deploy/push for you.
